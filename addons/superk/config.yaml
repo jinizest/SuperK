@@ -1,5 +1,5 @@
 name: "SuperK"
-version: "0.1.0"
+version: "0.1.2"
 slug: "superk"
 description: "SuperK train reservation service with Flask web UI"
 url: "https://github.com/jinizest/SuperK"
@@ -13,7 +13,7 @@ init: false
 webui: "http://[HOST]:[PORT:5000]"
 panel_icon: mdi:train
 ports:
-  5000/tcp: 5000
+  5000/tcp: null
 ports_description:
   5000/tcp: "SuperK Flask UI"
 map:
@@ -23,7 +23,55 @@ options:
   log_level: info
   host: 0.0.0.0
   port: 5000
+  rail_type: ktx
+  login:
+    user_id: ""
+    user_pw: ""
+    save_login: false
+  telegram:
+    telegram_token: ""
+    telegram_chat_id: ""
+    save_telegram: false
+  search:
+    departure: 서울
+    arrival: 부산
+    departure_date: ""
+    departure_time: "0700"
+    adult: 1
+    child: 0
+    path_index: 0
+  payment:
+    card_number: ""
+    card_password_2: ""
+    is_corporate_card: false
+    birth_date: ""
+    card_expire: ""
+    save_payment: false
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   host: str
   port: int(1024,65535)
+  rail_type: list(ktx|srt)
+  login:
+    user_id: str?
+    user_pw: password?
+    save_login: bool?
+  telegram:
+    telegram_token: password?
+    telegram_chat_id: str?
+    save_telegram: bool?
+  search:
+    departure: str?
+    arrival: str?
+    departure_date: str?
+    departure_time: str?
+    adult: int?
+    child: int?
+    path_index: int?
+  payment:
+    card_number: password?
+    card_password_2: password?
+    is_corporate_card: bool?
+    birth_date: password?
+    card_expire: password?
+    save_payment: bool?

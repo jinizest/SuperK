@@ -27,11 +27,13 @@ class InternalServer:
         self._thread: threading.Thread | None = None
         self._status = "idle"
         self._last_message = "대기 중"
+        self._active_payload: dict = {}
 
-    def start(self) -> None:
+    def start(self, payload: dict | None = None) -> None:
         if self._thread and self._thread.is_alive():
             return
 
+        self._active_payload = payload or {}
         self._running.set()
         self._status = "running"
         self._last_message = "서버 시작"
@@ -43,6 +45,7 @@ class InternalServer:
         self._running.clear()
         self._status = "stopped"
         self._last_message = "서버 중지"
+        self._active_payload = {}
         logging.info("Internal server stopping")
 
     def _run_loop(self) -> None:
@@ -56,7 +59,40 @@ class InternalServer:
             "status": self._status,
             "last_message": self._last_message,
             "thread_alive": bool(self._thread and self._thread.is_alive()),
+            "active_payload": self._active_payload,
         }
+
+
+def build_mock_trains(payload: dict) -> list[dict]:
+    """검색 조건을 바탕으로 UI 표시용 모의 열차 데이터를 생성한다."""
+    departure = payload.get("departure") or "서울"
+    arrival = payload.get("arrival") or "부산"
+    start_time = payload.get("departure_time") or "0700"
+    date = payload.get("departure_date") or datetime.now().strftime("%Y%m%d")
+
+    base = [
+        ("015", start_time, "+02:48", "예약 가능"),
+        ("021", "0815", "+03:04", "매진 임박"),
+        ("033", "0930", "+03:11", "예약 가능"),
+    ]
+    trains: list[dict] = []
+    for train_no, dep, duration, status in base:
+        h = int(dep[:2])
+        m = int(dep[2:])
+        extra_h, extra_m = map(int, duration.replace("+", "").split(":"))
+        arr_h = (h + extra_h + ((m + extra_m) // 60)) % 24
+        arr_m = (m + extra_m) % 60
+        trains.append(
+            {
+                "train_no": train_no,
+                "route": f"{departure} → {arrival}",
+                "date": date,
+                "depart_at": f"{h:02d}:{m:02d}",
+                "arrive_at": f"{arr_h:02d}:{arr_m:02d}",
+                "status": status,
+            }
+        )
+    return trains
 
 
 worker = InternalServer()
@@ -95,6 +131,59 @@ def load_options() -> dict:
     return {}
 
 
+def _to_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def build_form_values(options: dict) -> dict:
+    """Home Assistant add-on 옵션을 UI 초기값으로 변환한다."""
+    login = options.get("login", {}) if isinstance(options.get("login"), dict) else {}
+    telegram = (
+        options.get("telegram", {}) if isinstance(options.get("telegram"), dict) else {}
+    )
+    search = options.get("search", {}) if isinstance(options.get("search"), dict) else {}
+    payment = options.get("payment", {}) if isinstance(options.get("payment"), dict) else {}
+
+    return {
+        "rail_type": options.get("rail_type", "ktx"),
+        "user_id": login.get("user_id", options.get("user_id", "")),
+        "user_pw": login.get("user_pw", options.get("user_pw", "")),
+        "save_login": _to_bool(login.get("save_login", options.get("save_login", False))),
+        "telegram_token": telegram.get("telegram_token", options.get("telegram_token", "")),
+        "telegram_chat_id": telegram.get(
+            "telegram_chat_id", options.get("telegram_chat_id", "")
+        ),
+        "save_telegram": _to_bool(
+            telegram.get("save_telegram", options.get("save_telegram", False))
+        ),
+        "departure": search.get("departure", options.get("departure", "서울")),
+        "arrival": search.get("arrival", options.get("arrival", "부산")),
+        "departure_date": search.get(
+            "departure_date", options.get("departure_date", datetime.now().strftime("%Y%m%d"))
+        ),
+        "departure_time": search.get("departure_time", options.get("departure_time", "0700")),
+        "adult": search.get("adult", options.get("adult", 1)),
+        "child": search.get("child", options.get("child", 0)),
+        "path_index": search.get("path_index", options.get("path_index", 0)),
+        "card_number": payment.get("card_number", options.get("card_number", "")),
+        "card_password_2": payment.get(
+            "card_password_2", options.get("card_password_2", "")
+        ),
+        "is_corporate_card": _to_bool(
+            payment.get("is_corporate_card", options.get("is_corporate_card", False))
+        ),
+        "birth_date": payment.get("birth_date", options.get("birth_date", "")),
+        "card_expire": payment.get("card_expire", options.get("card_expire", "")),
+        "save_payment": _to_bool(
+            payment.get("save_payment", options.get("save_payment", False))
+        ),
+    }
+
+
 @app.route("/")
 def index():
     options = load_options()
@@ -102,13 +191,14 @@ def index():
         "index.html",
         status=worker.status(),
         options=options,
+        form_values=build_form_values(options),
         log_file=LOG_FILE_PATH,
     )
 
 
 @app.post("/start")
 def start_server():
-    worker.start()
+    worker.start({"source": "legacy_form"})
     return redirect(url_for("index"))
 
 
@@ -116,6 +206,36 @@ def start_server():
 def stop_server():
     worker.stop()
     return redirect(url_for("index"))
+
+
+@app.post("/api/search")
+def api_search_trains():
+    payload = request.get_json(silent=True) or {}
+    trains = build_mock_trains(payload)
+    logging.info(
+        "Train search requested: type=%s, %s->%s, date=%s, time=%s",
+        payload.get("rail_type", "ktx"),
+        payload.get("departure", "서울"),
+        payload.get("arrival", "부산"),
+        payload.get("departure_date", ""),
+        payload.get("departure_time", ""),
+    )
+    return jsonify({"trains": trains})
+
+
+@app.post("/api/run/start")
+def api_run_start():
+    payload = request.get_json(silent=True) or {}
+    worker.start(payload)
+    logging.info("Reservation start requested")
+    return jsonify({"ok": True, "status": worker.status()})
+
+
+@app.post("/api/run/stop")
+def api_run_stop():
+    worker.stop()
+    logging.info("Reservation stop requested")
+    return jsonify({"ok": True, "status": worker.status()})
 
 
 @app.get("/api/status")
