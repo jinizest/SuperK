@@ -3,42 +3,427 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SuperK Add-on</title>
+    <title>SuperK KTX/SRT Macro</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; background: #111827; color: #e5e7eb; }
-      .card { background: #1f2937; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
-      button { padding: .6rem 1rem; border: none; border-radius: 6px; margin-right: .5rem; cursor: pointer; }
-      .start { background: #10b981; color: white; }
-      .stop { background: #ef4444; color: white; }
-      pre { background: #0b1220; padding: .8rem; border-radius: 6px; overflow-x: auto; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      :root {
+        --bg-0: #061326;
+        --bg-1: #0a1a31;
+        --card: rgba(20, 33, 54, 0.84);
+        --card-border: rgba(255, 255, 255, 0.11);
+        --text: #f4f7ff;
+        --muted: #b7c3d9;
+        --primary: #4a90ff;
+        --primary-soft: rgba(74, 144, 255, 0.14);
+        --success: #6f57ff;
+        --danger: #ff4b4b;
+        --field-bg: rgba(13, 25, 42, 0.72);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--text);
+        font-family: "Pretendard", "Noto Sans KR", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        background:
+          radial-gradient(1000px 440px at 50% -10%, rgba(74, 144, 255, 0.22), transparent 65%),
+          linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+      }
+
+      .container {
+        width: min(1180px, 95vw);
+        margin: 0 auto;
+        padding: 24px 14px 34px;
+      }
+
+      .title {
+        margin: 2px 0 20px;
+        text-align: center;
+        font-size: clamp(26px, 4vw, 46px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+        margin-bottom: 14px;
+      }
+
+      .tab {
+        border: 0;
+        cursor: pointer;
+        background: transparent;
+        color: #95a8c8;
+        font-size: clamp(15px, 2.4vw, 22px);
+        font-weight: 700;
+        padding: 10px 18px 12px;
+        border-bottom: 3px solid transparent;
+        transition: color .2s ease;
+      }
+
+      .tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 18px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 6px 26px rgba(0, 0, 0, .24);
+        padding: 18px;
+        margin: 10px 0;
+      }
+
+      .section-title {
+        margin: 2px 2px 14px;
+        font-size: clamp(18px, 2.5vw, 28px);
+        font-weight: 700;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: clamp(13px, 2vw, 16px);
+        margin: 0 0 6px;
+      }
+
+      .field { margin-bottom: 10px; }
+      .inline { display: flex; align-items: center; gap: 10px; }
+      .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+
+      input {
+        width: 100%;
+        height: 48px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: var(--field-bg);
+        color: var(--text);
+        padding: 0 14px;
+        font-size: 15px;
+        outline: none;
+        transition: border-color .2s ease, box-shadow .2s ease;
+      }
+
+      input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px var(--primary-soft);
+      }
+
+      .toggle {
+        width: 20px;
+        height: 20px;
+        accent-color: var(--primary);
+      }
+
+      .check-label {
+        font-size: 15px;
+        color: #d9e3f3;
+      }
+
+      .btn {
+        width: 100%;
+        height: 52px;
+        border: 0;
+        border-radius: 14px;
+        color: white;
+        font-size: 17px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform .12s ease, filter .2s ease;
+      }
+
+      .btn:hover { filter: brightness(1.07); }
+      .btn:active { transform: translateY(1px); }
+
+      .btn-subtle {
+        width: 92px;
+        height: 48px;
+        border-radius: 12px;
+        font-size: 14px;
+        background: #314767;
+      }
+
+      .btn-search { background: linear-gradient(180deg, #334969 0%, #2a3d59 100%); }
+      .btn-start { background: linear-gradient(90deg, #6a4cff 0%, #8f67ff 100%); }
+      .btn-stop { background: linear-gradient(90deg, #ff4d5e 0%, #ff3c43 100%); }
+
+      .log-toggle {
+        margin-top: 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 14px;
+        background: rgba(10, 22, 41, 0.82);
+        text-align: center;
+        padding: 12px;
+        cursor: pointer;
+        color: #bed0ea;
+        font-size: 17px;
+        font-weight: 600;
+      }
+
+      .log-box {
+        display: none;
+        margin-top: 8px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        background: rgba(4, 13, 26, .76);
+        padding: 12px;
+        min-height: 120px;
+        max-height: 260px;
+        overflow: auto;
+        font-size: 12px;
+        line-height: 1.35;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .train-list { display: grid; gap: 8px; margin-top: 8px; }
+      .train-item {
+        width: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 12px;
+        background: rgba(12, 24, 42, 0.8);
+        color: var(--text);
+        padding: 11px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-align: left;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .train-item.selected {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px var(--primary-soft) inset;
+      }
+
+      .train-status {
+        font-size: 12px;
+        color: #d4e5ff;
+        background: rgba(74, 144, 255, 0.2);
+        border: 1px solid rgba(74, 144, 255, 0.35);
+        border-radius: 999px;
+        padding: 4px 8px;
+      }
+
+      .hidden { display: none; }
+
+      @media (max-width: 860px) {
+        .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        .btn-subtle { width: 84px; }
+        .panel { padding: 14px; }
+      }
     </style>
   </head>
   <body>
-    <h1>🚄 SuperK Home Assistant Add-on</h1>
+    <div class="container">
+      <div class="title">🚄 KTX/SRT Macro</div>
 
-    <div class="card">
-      <h2>서버 상태</h2>
-      <p><strong>Status:</strong> {{ status.status }}</p>
-      <p><strong>Last Message:</strong> {{ status.last_message }}</p>
-      <p><strong>Thread Alive:</strong> {{ status.thread_alive }}</p>
-      <form method="post" action="/start" style="display:inline;">
-        <button class="start" type="submit">서버 시작</button>
-      </form>
-      <form method="post" action="/stop" style="display:inline;">
-        <button class="stop" type="submit">서버 중지</button>
-      </form>
+      <div class="tabs">
+        <button class="tab active" data-rail="ktx">KTX 예약</button>
+        <button class="tab" data-rail="srt">SRT 예약</button>
+      </div>
+
+      <div class="panel">
+        <div class="section-title">🔐 로그인 정보</div>
+        <div class="field"><input id="user_id" placeholder="아이디를 입력하세요" value="{{ form_values.user_id }}"></div>
+        <div class="field inline">
+          <input id="user_pw" type="password" placeholder="비밀번호를 입력하세요" value="{{ form_values.user_pw }}">
+          <button id="togglePw" class="btn btn-subtle" type="button">Show</button>
+        </div>
+        <div class="field inline">
+          <input id="save_login" class="toggle" type="checkbox" {% if form_values.save_login %}checked{% endif %}>
+          <div class="check-label">로그인 정보 저장 (안전하게 암호화됨)</div>
+        </div>
+        <div class="field"><input id="telegram_token" placeholder="텔레그램 Bot Token" value="{{ form_values.telegram_token }}"></div>
+        <div class="field"><input id="telegram_chat_id" placeholder="텔레그램 Chat ID" value="{{ form_values.telegram_chat_id }}"></div>
+        <div class="field inline">
+          <input id="save_telegram" class="toggle" type="checkbox" {% if form_values.save_telegram %}checked{% endif %}>
+          <div class="check-label">텔레그램 정보 저장 (안전하게 암호화됨)</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-title">🔍 검색 조건</div>
+        <div class="grid-2">
+          <div class="field"><div class="label">출발역</div><input id="departure" value="{{ form_values.departure }}"></div>
+          <div class="field"><div class="label">도착역</div><input id="arrival" value="{{ form_values.arrival }}"></div>
+          <div class="field"><div class="label">출발일</div><input id="departure_date" value="{{ form_values.departure_date }}"></div>
+          <div class="field"><div class="label">출발시간</div><input id="departure_time" value="{{ form_values.departure_time }}"></div>
+        </div>
+        <div class="grid-3">
+          <div class="field"><div class="label">어른</div><input id="adult" type="number" min="0" value="{{ form_values.adult }}"></div>
+          <div class="field"><div class="label">어린이</div><input id="child" type="number" min="0" value="{{ form_values.child }}"></div>
+          <div class="field"><div class="label">경로</div><input id="path_index" type="number" min="0" value="{{ form_values.path_index }}"></div>
+        </div>
+        <button id="searchBtn" class="btn btn-search" type="button">🔍 열차 검색</button>
+      </div>
+
+      <div id="trainPanel" class="panel hidden">
+        <div class="section-title">🚆 검색 결과</div>
+        <div id="trainList" class="train-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="section-title">💳 결제 정보</div>
+        <div class="field"><input id="card_number" placeholder="카드번호 (16자리)" value="{{ form_values.card_number }}"></div>
+        <div class="field"><input id="card_password_2" placeholder="카드 비밀번호 앞 2자리" value="{{ form_values.card_password_2 }}"></div>
+        <div class="field inline">
+          <input id="is_corporate_card" class="toggle" type="checkbox" {% if form_values.is_corporate_card %}checked{% endif %}>
+          <div class="check-label">법인카드 사용</div>
+        </div>
+        <div class="field"><input id="birth_date" placeholder="생년월일 (YYMMDD)" value="{{ form_values.birth_date }}"></div>
+        <div class="field"><input id="card_expire" placeholder="유효기간 (YYMM)" value="{{ form_values.card_expire }}"></div>
+        <div class="field inline">
+          <input id="save_payment" class="toggle" type="checkbox" {% if form_values.save_payment %}checked{% endif %}>
+          <div class="check-label">결제 정보 저장 (안전하게 암호화됨)</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <button id="startBtn" class="btn btn-start" type="button">🚀 예약 시작</button>
+        <button id="stopBtn" class="btn btn-stop" type="button">⏹ 예약 중지</button>
+      </div>
+
+      <div id="logToggle" class="log-toggle">▼ 실행 로그 보기</div>
+      <pre id="logBox" class="log-box"></pre>
     </div>
 
-    <div class="card">
-      <h2>실행 옵션 (/data/options.json)</h2>
-      <pre class="mono">{{ options | tojson(indent=2) }}</pre>
-    </div>
+    <script>
+      const state = { rail_type: '{{ form_values.rail_type }}' || 'ktx', selected_train_no: null };
+      const $ = (id) => document.getElementById(id);
+      const value = (id) => $(id).value;
+      const checked = (id) => $(id).checked;
 
-    <div class="card">
-      <h2>로그 파일</h2>
-      <p class="mono">{{ log_file }}</p>
-      <p>로그 API: <code>/api/logs?tail=100</code></p>
-    </div>
+      document.querySelectorAll('.tab').forEach((el) => {
+        if (el.dataset.rail === state.rail_type) {
+          document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+          el.classList.add('active');
+        }
+
+        el.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+          el.classList.add('active');
+          state.rail_type = el.dataset.rail;
+        });
+      });
+
+      $('togglePw').addEventListener('click', () => {
+        const input = $('user_pw');
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        $('togglePw').textContent = show ? 'Hide' : 'Show';
+      });
+
+      $('logToggle').addEventListener('click', async () => {
+        const box = $('logBox');
+        const open = box.style.display !== 'block';
+        box.style.display = open ? 'block' : 'none';
+        $('logToggle').textContent = open ? '▲ 실행 로그 숨기기' : '▼ 실행 로그 보기';
+
+        if (open) {
+          const res = await fetch('/api/logs?tail=120');
+          const data = await res.json();
+          box.textContent = (data.logs || []).join('');
+        }
+      });
+
+      function buildPayload() {
+        return {
+          rail_type: state.rail_type,
+          login: {
+            user_id: value('user_id'),
+            user_pw: value('user_pw'),
+            save_login: checked('save_login'),
+          },
+          telegram: {
+            telegram_token: value('telegram_token'),
+            telegram_chat_id: value('telegram_chat_id'),
+            save_telegram: checked('save_telegram'),
+          },
+          search: {
+            departure: value('departure'),
+            arrival: value('arrival'),
+            departure_date: value('departure_date'),
+            departure_time: value('departure_time'),
+            adult: value('adult'),
+            child: value('child'),
+            path_index: value('path_index'),
+            selected_train_no: state.selected_train_no,
+          },
+          payment: {
+            card_number: value('card_number'),
+            card_password_2: value('card_password_2'),
+            is_corporate_card: checked('is_corporate_card'),
+            birth_date: value('birth_date'),
+            card_expire: value('card_expire'),
+            save_payment: checked('save_payment'),
+          },
+        };
+      }
+
+      $('searchBtn').addEventListener('click', async () => {
+        const payload = {
+          rail_type: state.rail_type,
+          departure: value('departure'),
+          arrival: value('arrival'),
+          departure_date: value('departure_date'),
+          departure_time: value('departure_time'),
+        };
+
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        const list = $('trainList');
+        list.innerHTML = '';
+
+        (data.trains || []).forEach((train, idx) => {
+          const item = document.createElement('button');
+          item.className = 'train-item';
+          item.type = 'button';
+          item.innerHTML = `
+            <span>${train.train_no} | ${train.depart_at} → ${train.arrive_at} (${train.route})</span>
+            <span class="train-status">${train.status}</span>
+          `;
+
+          item.addEventListener('click', () => {
+            state.selected_train_no = train.train_no;
+            document.querySelectorAll('.train-item').forEach((node) => node.classList.remove('selected'));
+            item.classList.add('selected');
+          });
+
+          if (idx === 0) {
+            state.selected_train_no = train.train_no;
+            item.classList.add('selected');
+          }
+
+          list.appendChild(item);
+        });
+
+        $('trainPanel').classList.remove('hidden');
+      });
+
+      $('startBtn').addEventListener('click', async () => {
+        const res = await fetch('/api/run/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildPayload()),
+        });
+        const data = await res.json();
+        alert(`예약 시작: ${data.status?.status || 'unknown'}`);
+      });
+
+      $('stopBtn').addEventListener('click', async () => {
+        const res = await fetch('/api/run/stop', { method: 'POST' });
+        const data = await res.json();
+        alert(`예약 중지: ${data.status?.status || 'unknown'}`);
+      });
+    </script>
   </body>
 </html>
