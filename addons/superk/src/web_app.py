@@ -260,7 +260,7 @@ if __name__ == "__main__":
     options = load_options()
 
     host = options.get("host") or os.getenv("SUPERK_HOST", "0.0.0.0")
-    port = int(options.get("port") or os.getenv("SUPERK_PORT", "5000"))
+    port = int(options.get("port") or os.getenv("SUPERK_PORT", "5555"))
 
     logging.info("Starting Flask web UI on %s:%s", host, port)
     app.run(host=host, port=port)
