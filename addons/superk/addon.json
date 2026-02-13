@@ -1,0 +1,10 @@
+{
+  "name": "SuperK",
+  "slug": "superk",
+  "description": "Home Assistant add-on wrapper for SuperK with Flask UI",
+  "webui_port": 5000,
+  "notes": [
+    "Home Assistant runtime options are read from /data/options.json.",
+    "This file is a reference manifest for external tooling."
+  ]
+}
