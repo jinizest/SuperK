@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SuperK Add-on</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; background: #111827; color: #e5e7eb; }
+      .card { background: #1f2937; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
+      button { padding: .6rem 1rem; border: none; border-radius: 6px; margin-right: .5rem; cursor: pointer; }
+      .start { background: #10b981; color: white; }
+      .stop { background: #ef4444; color: white; }
+      pre { background: #0b1220; padding: .8rem; border-radius: 6px; overflow-x: auto; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    </style>
+  </head>
+  <body>
+    <h1>🚄 SuperK Home Assistant Add-on</h1>
+
+    <div class="card">
+      <h2>서버 상태</h2>
+      <p><strong>Status:</strong> {{ status.status }}</p>
+      <p><strong>Last Message:</strong> {{ status.last_message }}</p>
+      <p><strong>Thread Alive:</strong> {{ status.thread_alive }}</p>
+      <form method="post" action="/start" style="display:inline;">
+        <button class="start" type="submit">서버 시작</button>
+      </form>
+      <form method="post" action="/stop" style="display:inline;">
+        <button class="stop" type="submit">서버 중지</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>실행 옵션 (/data/options.json)</h2>
+      <pre class="mono">{{ options | tojson(indent=2) }}</pre>
+    </div>
+
+    <div class="card">
+      <h2>로그 파일</h2>
+      <p class="mono">{{ log_file }}</p>
+      <p>로그 API: <code>/api/logs?tail=100</code></p>
+    </div>
+  </body>
+</html>

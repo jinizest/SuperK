@@ -1,0 +1,29 @@
+name: "SuperK"
+version: "0.1.0"
+slug: "superk"
+description: "SuperK train reservation service with Flask web UI"
+url: "https://github.com/jinizest/SuperK"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: services
+boot: auto
+init: false
+webui: "http://[HOST]:[PORT:5000]"
+panel_icon: mdi:train
+ports:
+  5000/tcp: 5000
+ports_description:
+  5000/tcp: "SuperK Flask UI"
+map:
+  - addon_config:rw
+  - ssl
+options:
+  log_level: info
+  host: 0.0.0.0
+  port: 5000
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)
+  host: str
+  port: int(1024,65535)
