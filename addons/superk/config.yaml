@@ -21,8 +21,6 @@ map:
   - ssl
 options:
   log_level: info
-  host: 0.0.0.0
-  port: 5000
   rail_type: ktx
   login:
     user_id: ""
@@ -49,8 +47,6 @@ options:
     save_payment: false
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
-  host: str
-  port: int(1024,65535)
   rail_type: list(ktx|srt)
   login:
     user_id: str?
