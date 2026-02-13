@@ -6,6 +6,6 @@
   "notes": [
     "Home Assistant runtime options are read from /data/options.json.",
     "This file is a reference manifest for external tooling.",
-    "By default, host port is not fixed. Configure 5000/tcp mapping in Home Assistant add-on Network settings."
+    "By default, host port is not fixed. Configure 5555/tcp mapping in Home Assistant add-on Network settings."
   ]
 }
