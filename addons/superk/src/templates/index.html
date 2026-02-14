@@ -421,15 +421,29 @@
 
     <script>
       const state = { rail_type: '{{ form_values.rail_type }}' || 'ktx', selected_train_no: null };
+      let logPollingTimer = null;
       const presetValues = {{ preset_values|tojson }};
       const $ = (id) => document.getElementById(id);
       const value = (id) => $(id).value;
       const checked = (id) => $(id).checked;
 
       async function loadLogs() {
-        const res = await fetch('/api/logs?tail=1000');
+        const res = await fetch('/api/logs?tail=1000&reservation_only=1');
         const data = await res.json();
         $('logBox').textContent = (data.logs || []).join('');
+        $('logBox').scrollTop = 0;
+      }
+
+      function startLogPolling() {
+        if (logPollingTimer) return;
+        loadLogs();
+        logPollingTimer = setInterval(loadLogs, 1200);
+      }
+
+      function stopLogPolling() {
+        if (!logPollingTimer) return;
+        clearInterval(logPollingTimer);
+        logPollingTimer = null;
       }
 
       function setupCollapsiblePanels() {
@@ -442,15 +456,19 @@
           toggle.setAttribute('aria-expanded', initiallyCollapsed ? 'false' : 'true');
 
           if (panel.id === 'logsPanel' && !initiallyCollapsed) {
-            loadLogs();
+            startLogPolling();
           }
 
           toggle.addEventListener('click', async () => {
             const collapsed = panel.classList.toggle('is-collapsed');
             toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
 
-            if (panel.id === 'logsPanel' && !collapsed) {
-              await loadLogs();
+            if (panel.id === 'logsPanel') {
+              if (!collapsed) {
+                startLogPolling();
+              } else {
+                stopLogPolling();
+              }
             }
           });
         });

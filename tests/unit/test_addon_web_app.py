@@ -4,6 +4,9 @@ from addons.superk.src.web_app import (
     build_form_values,
     build_waiting_form_values,
     search_real_trains,
+    _extract_run_context,
+    _to_ktx_reserve_option,
+    _is_reservation_log_line,
 )
 
 
@@ -39,3 +42,42 @@ def test_build_waiting_form_values_is_blank_for_sensitive_fields():
     assert values["user_pw"] == ""
     assert values["departure"] == ""
     assert values["arrival"] == ""
+
+
+def test_extract_run_context_reads_nested_payload():
+    payload = {
+        "rail_type": "ktx",
+        "login": {"user_id": "u", "user_pw": "p"},
+        "search": {
+            "departure": "서대구",
+            "arrival": "행신",
+            "departure_date": "20260222",
+            "departure_time": "1400",
+            "selected_train_no": "212",
+        },
+    }
+
+    context = _extract_run_context(payload)
+
+    assert context["user_id"] == "u"
+    assert context["selected_train_no"] == "212"
+
+
+def test_to_ktx_reserve_option_defaults_to_general_first():
+    class StubOption:
+        GENERAL_FIRST = "gf"
+        GENERAL_ONLY = "go"
+        SPECIAL_FIRST = "sf"
+        SPECIAL_ONLY = "so"
+
+    assert _to_ktx_reserve_option("unknown", StubOption) == "gf"
+    assert _to_ktx_reserve_option("special_only", StubOption) == "so"
+
+
+
+def test_is_reservation_log_line_filters_http_access_logs():
+    assert _is_reservation_log_line('2026 [INFO] 192.168.0.1 "GET /api/logs HTTP/1.1"') is False
+
+
+def test_is_reservation_log_line_allows_reservation_events():
+    assert _is_reservation_log_line("2026 [INFO] 🔄 예약 시도 #1") is True
