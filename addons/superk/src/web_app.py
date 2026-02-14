@@ -1,17 +1,43 @@
 import json
 import logging
 import os
+import random
 import sys
 import threading
 import time
 from datetime import datetime
 
+import requests
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 
 DATA_DIR = "/data"
 LOG_FILE_PATH = os.path.join(DATA_DIR, "superk.log")
 OPTIONS_FILE_PATH = os.path.join(DATA_DIR, "options.json")
+
+RESERVATION_LOG_KEYWORDS = (
+    "Train search",
+    "Reservation",
+    "예약",
+    "🔄",
+    "→",
+    "⏳",
+    "✓",
+    "✗",
+    "텔레그램",
+)
+
+RESERVATION_LOG_EXCLUDE_KEYWORDS = (
+    "HTTP/1.1",
+    "GET /api/logs",
+)
+
+
+def _is_reservation_log_line(line: str) -> bool:
+    if any(keyword in line for keyword in RESERVATION_LOG_EXCLUDE_KEYWORDS):
+        return False
+    return any(keyword in line for keyword in RESERVATION_LOG_KEYWORDS)
+
 
 app = Flask(__name__)
 APP_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,11 +46,7 @@ if APP_SRC_DIR not in sys.path:
 
 
 class InternalServer:
-    """간단한 내부 워커 서버.
-
-    Home Assistant add-on 환경에서는 이 워커가 지속 실행되며 로그를 남긴다.
-    필요 시 기존 SuperK 예약 로직으로 교체할 수 있도록 분리했다.
-    """
+    """Home Assistant add-on 예약 워커."""
 
     def __init__(self) -> None:
         self._running = threading.Event()
@@ -53,10 +75,123 @@ class InternalServer:
         logging.info("Internal server stopping")
 
     def _run_loop(self) -> None:
+        payload = _extract_run_context(self._active_payload)
+        selected_train_no = payload.get("selected_train_no")
+        if not selected_train_no:
+            logging.warning("선택된 열차 번호가 없어 예약을 시작할 수 없습니다")
+            self._status = "stopped"
+            self._last_message = "선택된 열차가 없습니다"
+            self._running.clear()
+            return
+
+        self._send_telegram(payload, _build_start_message(payload))
+
+        attempt = 0
         while self._running.is_set():
-            self._last_message = f"동작 중: {datetime.now().isoformat(timespec='seconds')}"
-            logging.info("Internal server heartbeat")
-            time.sleep(5)
+            attempt += 1
+            self._last_message = f"예약 시도 #{attempt}"
+            logging.info("🔄 예약 시도 #%s", attempt)
+            try:
+                self._try_reserve(payload)
+                self._status = "completed"
+                self._last_message = "예약 성공"
+                self._running.clear()
+                return
+            except RuntimeError as exc:
+                logging.info("  ✗ %s 예약 실패: %s", selected_train_no, exc)
+                if "WRR800029" in str(exc):
+                    self._send_telegram(payload, f"⚠️ 중복 예약 감지: {exc}")
+                    self._status = "stopped"
+                    self._last_message = "중복 예약으로 중지"
+                    self._running.clear()
+                    return
+            except Exception as exc:
+                logging.exception("예약 시도 중 오류")
+                self._send_telegram(payload, f"⚠️ 예약 오류 발생: {exc}")
+
+            delay = random.uniform(1.5, 3.8)
+            logging.info("⏳ %.1f초 후 재시도...", delay)
+            time.sleep(delay)
+
+    def _try_reserve(self, payload: dict) -> None:
+        rail_type = payload.get("rail_type", "ktx")
+        if rail_type == "srt":
+            self._try_reserve_srt(payload)
+            return
+        self._try_reserve_ktx(payload)
+
+    def _try_reserve_ktx(self, payload: dict) -> None:
+        from infrastructure.external.ktx import Korail, ReserveOption, TrainType as KorailTrainType
+
+        client = Korail(auto_login=False)
+        client.login(payload["user_id"], payload["user_pw"])
+        trains = client.search_train(
+            dep=payload["departure"],
+            arr=payload["arrival"],
+            date=payload["departure_date"],
+            time=f"{payload['departure_time']}00",
+            train_type=KorailTrainType.KTX,
+            passengers=_build_ktx_passengers(payload),
+            include_no_seats=True,
+            include_waiting_list=True,
+        )
+        target = next((t for t in trains if t.train_no == payload["selected_train_no"]), None)
+        if not target:
+            raise RuntimeError("선택한 열차를 찾을 수 없습니다")
+
+        logging.info("  → %s 예약 시도 중...", target.train_no)
+        if not (target.has_special_seat() or target.has_general_seat() or target.has_waiting_list()):
+            raise RuntimeError("No available seats")
+
+        option = _to_ktx_reserve_option(payload.get("seat_preference", "general_first"), ReserveOption)
+        reservation = client.reserve(target, passengers=_build_ktx_passengers(payload), option=option)
+        logging.info("  ✓ %s 예약 성공! 예약번호: %s", target.train_no, reservation.rsv_id)
+        self._send_telegram(payload, _build_success_message(payload, target.train_no, reservation.rsv_id))
+
+    def _try_reserve_srt(self, payload: dict) -> None:
+        from infrastructure.external.srt import SRT, SeatType
+
+        client = SRT(auto_login=False)
+        client.login(payload["user_id"], payload["user_pw"])
+        trains = client.search_train(
+            dep=payload["departure"],
+            arr=payload["arrival"],
+            date=payload["departure_date"],
+            time=f"{payload['departure_time']}00",
+            passengers=_build_srt_passengers(payload),
+            available_only=False,
+        )
+        target = next((t for t in trains if t.train_number == payload["selected_train_no"]), None)
+        if not target:
+            raise RuntimeError("선택한 열차를 찾을 수 없습니다")
+
+        logging.info("  → %s 예약 시도 중...", target.train_number)
+        if not (target.general_seat_available() or target.special_seat_available() or target.reserve_standby_available()):
+            raise RuntimeError("No available seats")
+
+        option = _to_srt_reserve_option(payload.get("seat_preference", "general_first"), SeatType)
+        reservation = client.reserve(target, passengers=_build_srt_passengers(payload), option=option)
+        logging.info("  ✓ %s 예약 성공! 예약번호: %s", target.train_number, reservation.reservation_number)
+        self._send_telegram(payload, _build_success_message(payload, target.train_number, reservation.reservation_number))
+
+    def _send_telegram(self, payload: dict, message: str) -> None:
+        token = payload.get("telegram_token", "").strip()
+        chat_id = payload.get("telegram_chat_id", "").strip()
+        if not token or not chat_id:
+            return
+
+        try:
+            response = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": message},
+                timeout=5,
+            )
+            if response.ok:
+                logging.info("📨 텔레그램 알림 전송 완료")
+            else:
+                logging.warning("⚠️ 텔레그램 알림 전송 실패: %s", response.status_code)
+        except Exception as exc:
+            logging.warning("⚠️ 텔레그램 알림 오류: %s", exc)
 
     def status(self) -> dict:
         return {
@@ -94,6 +229,93 @@ def _to_non_negative_int(value: object, default: int = 0) -> int:
         return max(int(value), 0)
     except (TypeError, ValueError):
         return default
+
+
+def _extract_run_context(payload: dict) -> dict:
+    login = payload.get("login", {}) if isinstance(payload.get("login"), dict) else {}
+    telegram = payload.get("telegram", {}) if isinstance(payload.get("telegram"), dict) else {}
+    search = payload.get("search", {}) if isinstance(payload.get("search"), dict) else {}
+
+    return {
+        "rail_type": str(payload.get("rail_type", "ktx")).lower(),
+        "user_id": (login.get("user_id") or payload.get("user_id") or "").strip(),
+        "user_pw": (login.get("user_pw") or payload.get("user_pw") or "").strip(),
+        "telegram_token": (telegram.get("telegram_token") or payload.get("telegram_token") or "").strip(),
+        "telegram_chat_id": (telegram.get("telegram_chat_id") or payload.get("telegram_chat_id") or "").strip(),
+        "departure": (search.get("departure") or payload.get("departure") or "").strip(),
+        "arrival": (search.get("arrival") or payload.get("arrival") or "").strip(),
+        "departure_date": _normalize_date_yyyymmdd(search.get("departure_date") or payload.get("departure_date")),
+        "departure_time": _normalize_time_to_hhmm(search.get("departure_time") or payload.get("departure_time")),
+        "seat_preference": (search.get("seat_preference") or payload.get("seat_preference") or "general_first").strip(),
+        "adult": _to_non_negative_int(search.get("adult", payload.get("adult", 1)), default=1),
+        "child": _to_non_negative_int(search.get("child", payload.get("child", 0)), default=0),
+        "path_index": _to_non_negative_int(search.get("path_index", payload.get("path_index", 0)), default=0),
+        "selected_train_no": str(search.get("selected_train_no") or payload.get("selected_train_no") or "").strip(),
+    }
+
+
+def _build_ktx_passengers(payload: dict) -> list[object]:
+    from infrastructure.external.ktx import AdultPassenger, ChildPassenger, SeniorPassenger
+
+    passengers = []
+    if payload.get("adult", 0) > 0:
+        passengers.append(AdultPassenger(payload["adult"]))
+    if payload.get("child", 0) > 0:
+        passengers.append(ChildPassenger(payload["child"]))
+    if payload.get("path_index", 0) > 0:
+        passengers.append(SeniorPassenger(payload["path_index"]))
+    return passengers or [AdultPassenger(1)]
+
+
+def _build_srt_passengers(payload: dict) -> list[object]:
+    from infrastructure.external.srt import Adult, Child, Senior
+
+    passengers = []
+    if payload.get("adult", 0) > 0:
+        passengers.append(Adult(payload["adult"]))
+    if payload.get("child", 0) > 0:
+        passengers.append(Child(payload["child"]))
+    if payload.get("path_index", 0) > 0:
+        passengers.append(Senior(payload["path_index"]))
+    return passengers or [Adult(1)]
+
+
+def _to_ktx_reserve_option(seat_preference: str, reserve_option_class: object) -> object:
+    mapping = {
+        "general_first": reserve_option_class.GENERAL_FIRST,
+        "general_only": reserve_option_class.GENERAL_ONLY,
+        "special_first": reserve_option_class.SPECIAL_FIRST,
+        "special_only": reserve_option_class.SPECIAL_ONLY,
+    }
+    return mapping.get(str(seat_preference).lower(), reserve_option_class.GENERAL_FIRST)
+
+
+def _to_srt_reserve_option(seat_preference: str, seat_type_class: object) -> object:
+    mapping = {
+        "general_first": seat_type_class.GENERAL_FIRST,
+        "general_only": seat_type_class.GENERAL_ONLY,
+        "special_first": seat_type_class.SPECIAL_FIRST,
+        "special_only": seat_type_class.SPECIAL_ONLY,
+    }
+    return mapping.get(str(seat_preference).lower(), seat_type_class.GENERAL_FIRST)
+
+
+def _build_start_message(payload: dict) -> str:
+    return (
+        "🚀 예약 시작\n"
+        f"- 노선: {payload.get('departure')}→{payload.get('arrival')}\n"
+        f"- 일시: {payload.get('departure_date')} {payload.get('departure_time')}\n"
+        f"- 열차: {payload.get('selected_train_no')}"
+    )
+
+
+def _build_success_message(payload: dict, train_no: str, reservation_no: str) -> str:
+    return (
+        "✅ 예약 성공\n"
+        f"- 열차: {train_no}\n"
+        f"- 구간: {payload.get('departure')}→{payload.get('arrival')}\n"
+        f"- 예약번호: {reservation_no}"
+    )
 
 
 def _format_ktx_status(train: object) -> str:
@@ -406,6 +628,10 @@ def api_logs():
 
     with open(LOG_FILE_PATH, "r", encoding="utf-8") as f:
         lines = f.readlines()
+
+    reservation_only = request.args.get("reservation_only", "0") != "0"
+    if reservation_only:
+        lines = [line for line in lines if _is_reservation_log_line(line)]
 
     latest_first = list(reversed(lines[-tail:]))
     return jsonify({"logs": latest_first})
