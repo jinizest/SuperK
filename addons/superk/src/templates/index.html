@@ -406,7 +406,7 @@
         </div>
       </div>
 
-      <div class="panel collapsible" data-collapsed="true" id="logsPanel">
+      <div class="panel collapsible" data-collapsed="false" id="logsPanel">
         <button type="button" class="section-toggle" aria-expanded="false">
           <span class="section-title">🧾 실행 로그</span>
           <span class="section-chevron">▼</span>
@@ -426,6 +426,12 @@
       const value = (id) => $(id).value;
       const checked = (id) => $(id).checked;
 
+      async function loadLogs() {
+        const res = await fetch('/api/logs?tail=1000');
+        const data = await res.json();
+        $('logBox').textContent = (data.logs || []).join('');
+      }
+
       function setupCollapsiblePanels() {
         document.querySelectorAll('.panel.collapsible').forEach((panel) => {
           const toggle = panel.querySelector('.section-toggle');
@@ -435,14 +441,16 @@
           panel.classList.toggle('is-collapsed', initiallyCollapsed);
           toggle.setAttribute('aria-expanded', initiallyCollapsed ? 'false' : 'true');
 
+          if (panel.id === 'logsPanel' && !initiallyCollapsed) {
+            loadLogs();
+          }
+
           toggle.addEventListener('click', async () => {
             const collapsed = panel.classList.toggle('is-collapsed');
             toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
 
             if (panel.id === 'logsPanel' && !collapsed) {
-              const res = await fetch('/api/logs?tail=120');
-              const data = await res.json();
-              $('logBox').textContent = (data.logs || []).join('');
+              await loadLogs();
             }
           });
         });

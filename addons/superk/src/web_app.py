@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from datetime import datetime
@@ -13,6 +14,9 @@ LOG_FILE_PATH = os.path.join(DATA_DIR, "superk.log")
 OPTIONS_FILE_PATH = os.path.join(DATA_DIR, "options.json")
 
 app = Flask(__name__)
+APP_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+if APP_SRC_DIR not in sys.path:
+    sys.path.insert(0, APP_SRC_DIR)
 
 
 class InternalServer:
@@ -130,7 +134,7 @@ def search_real_trains(payload: dict) -> list[dict]:
     senior = _to_non_negative_int(payload.get("path_index"), default=0)
 
     if rail_type == "srt":
-        from src.infrastructure.external.srt import SRT, Adult, Child, Senior
+        from infrastructure.external.srt import SRT, Adult, Child, Senior
 
         client = SRT(auto_login=False)
         client.login(user_id, user_pw)
@@ -165,7 +169,7 @@ def search_real_trains(payload: dict) -> list[dict]:
             for train in trains
         ]
 
-    from src.infrastructure.external.ktx import (
+    from infrastructure.external.ktx import (
         Korail,
         AdultPassenger,
         ChildPassenger,
@@ -395,14 +399,16 @@ def api_status():
 
 @app.get("/api/logs")
 def api_logs():
-    tail = int(request.args.get("tail", "100"))
+    requested_tail = int(request.args.get("tail", "200"))
+    tail = max(1, min(requested_tail, 1000))
     if not os.path.exists(LOG_FILE_PATH):
         return jsonify({"logs": []})
 
     with open(LOG_FILE_PATH, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    return jsonify({"logs": lines[-tail:]})
+    latest_first = list(reversed(lines[-tail:]))
+    return jsonify({"logs": latest_first})
 
 
 if __name__ == "__main__":
