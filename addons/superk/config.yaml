@@ -1,5 +1,5 @@
 name: "SuperK"
-version: "0.1.5"
+version: "0.1.7"
 slug: "superk"
 description: "SuperK train reservation service with Flask web UI"
 url: "https://github.com/jinizest/SuperK"
@@ -33,10 +33,11 @@ options:
     telegram_chat_id: ""
     save_telegram: false
   search:
-    departure: 서울
-    arrival: 부산
+    departure: 서대구
+    arrival: 행신
     departure_date: ""
     departure_time: "0700"
+    seat_preference: general_first
     adult: 1
     child: 0
     path_index: 0
@@ -65,6 +66,7 @@ schema:
     arrival: str?
     departure_date: str?
     departure_time: str?
+    seat_preference: list(general_first|special_first|general_only|special_only)?
     adult: int?
     child: int?
     path_index: int?
