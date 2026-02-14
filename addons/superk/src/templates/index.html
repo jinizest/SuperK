@@ -382,8 +382,8 @@
         <div class="section-body">
           <div class="payment-grid">
             <div class="field"><div class="label">카드번호</div><input id="card_number" placeholder="카드번호 (16자리)" value="{{ form_values.card_number }}"></div>
-            <div class="field"><div class="label">비밀번호 앞 2자리</div><input id="card_password_2" placeholder="카드 비밀번호 앞 2자리" value="{{ form_values.card_password_2 }}"></div>
-            <div class="field"><div class="label">생년월일</div><input id="birth_date" placeholder="생년월일 (YYMMDD)" value="{{ form_values.birth_date }}"></div>
+            <div class="field"><div class="label">비밀번호 앞 2자리</div><input id="card_password_2" type="password" placeholder="카드 비밀번호 앞 2자리" value="{{ form_values.card_password_2 }}"></div>
+            <div class="field"><div class="label">생년월일</div><input id="birth_date" type="password" placeholder="생년월일 (YYMMDD)" value="{{ form_values.birth_date }}"></div>
             <div class="field"><div class="label">유효기간</div><input id="card_expire" placeholder="유효기간 (YYMM)" value="{{ form_values.card_expire }}"></div>
             <div class="field inline span-2">
               <input id="is_corporate_card" class="toggle" type="checkbox" {% if form_values.is_corporate_card %}checked{% endif %}>
