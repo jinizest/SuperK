@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SuperK KTX/SRT Macro</title>
+    <title>표가안구해져서내가만든KTXSRTMacro</title>
     <style>
       :root {
         --bg-0: #061326;
@@ -15,10 +15,17 @@
         --primary: #4a90ff;
         --primary-soft: rgba(74, 144, 255, 0.14);
         --field-bg: rgba(13, 25, 42, 0.72);
+        --title-grad-1: #ffffff;
+        --title-grad-2: #d6e7ff;
+        --title-accent: rgba(74, 144, 255, 0.35);
       }
 
       * { box-sizing: border-box; }
+      html {
+        background: linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+      }
       body {
+        min-height: 100vh;
         margin: 0;
         color: var(--text);
         font-family: "Pretendard", "Noto Sans KR", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -30,16 +37,24 @@
       .container {
         width: min(560px, 94vw);
         margin: 0 auto;
-        padding: 8px 8px 14px;
+        padding: 10px 8px 14px;
       }
 
       .title {
         margin: 2px 0 8px;
         text-align: center;
-        font-size: clamp(19px, 5vw, 26px);
+        font-family: "SF Pro Display", "Inter", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        font-size: clamp(17px, 4.1vw, 24px);
         font-weight: 800;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.03em;
+        line-height: 1.08;
+        background: linear-gradient(160deg, var(--title-grad-1) 0%, var(--title-grad-2) 55%, #a7c7ff 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        text-shadow: 0 0 24px var(--title-accent);
       }
+
 
       .tabs {
         display: flex;
@@ -90,7 +105,7 @@
       }
 
       .section-title {
-        font-size: clamp(15px, 3.8vw, 19px);
+        font-size: clamp(14px, 3.2vw, 17px);
         font-weight: 700;
       }
 
@@ -116,7 +131,7 @@
 
       .label {
         color: var(--muted);
-        font-size: clamp(11px, 3.1vw, 13px);
+        font-size: clamp(10px, 2.7vw, 12px);
         margin: 0 0 3px;
       }
 
@@ -162,7 +177,7 @@
       }
 
       .check-label {
-        font-size: 12px;
+        font-size: 11px;
         color: #d9e3f3;
       }
 
@@ -257,12 +272,19 @@
         border-radius: 10px;
         background: rgba(4, 13, 26, .76);
         padding: 10px;
-        min-height: 100px;
-        max-height: 220px;
+        min-height: 195px;
+        max-height: 429px;
         overflow: auto;
         font-size: 11px;
         line-height: 1.35;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      @media (max-width: 768px) {
+        .log-box {
+          font-size: 9px;
+          line-height: 1.25;
+        }
       }
 
       .hidden { display: none; }
@@ -286,18 +308,11 @@
         cursor: pointer;
       }
 
-      @media (max-width: 390px) {
-        .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .station-row { grid-template-columns: 1fr; }
-        .grid-telegram { grid-template-columns: 1fr; }
-        .payment-grid { grid-template-columns: 1fr; }
-        .span-2 { grid-column: auto; }
-      }
     </style>
   </head>
   <body>
     <div class="container">
-      <div class="title">🚄 KTX/SRT Macro</div>
+      <div class="title">표가안구해져서내가만든KTXSRTMacro</div>
 
       <div class="tabs">
         <button class="tab active" data-rail="ktx">KTX 예약</button>
