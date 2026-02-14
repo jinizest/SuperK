@@ -145,8 +145,53 @@ class InternalServer:
 
         option = _to_ktx_reserve_option(payload.get("seat_preference", "general_first"), ReserveOption)
         reservation = client.reserve(target, passengers=_build_ktx_passengers(payload), option=option)
+        seat_info = _seat_preference_label(payload.get("seat_preference", "general_first"))
+
+        try:
+            ticket_info = client.ticket_info(reservation.rsv_id)
+            if ticket_info and isinstance(ticket_info, tuple) and ticket_info[0]:
+                seat_info = ", ".join(str(seat) for seat in ticket_info[0])
+        except Exception:
+            logging.exception("좌석 정보 조회 실패")
+
         logging.info("  ✓ %s 예약 성공! 예약번호: %s", target.train_no, reservation.rsv_id)
-        self._send_telegram(payload, _build_success_message(payload, target.train_no, reservation.rsv_id))
+        self._send_telegram(payload, _build_success_message(payload, target.train_no, reservation.rsv_id, seat_info))
+
+        if _has_payment_info(payload):
+            card_type = "S" if payload.get("is_corporate_card") else "J"
+            try:
+                paid = client.pay_with_card(
+                    reservation,
+                    payload["card_number"],
+                    payload["card_password_2"],
+                    payload["birth_date"],
+                    payload["card_expire"],
+                    card_type=card_type,
+                )
+                if paid:
+                    self._send_telegram(
+                        payload,
+                        _build_payment_complete_message(
+                            payload,
+                            target.train_no,
+                            reservation.rsv_id,
+                            reservation.rsv_id,
+                            seat_info,
+                        ),
+                    )
+                else:
+                    self._send_telegram(
+                        payload,
+                        _build_payment_required_message(payload, target.train_no, reservation.rsv_id, seat_info),
+                    )
+            except Exception as exc:
+                logging.warning("자동 결제 실패(KTX): %s", exc)
+                self._send_telegram(
+                    payload,
+                    _build_payment_required_message(payload, target.train_no, reservation.rsv_id, seat_info),
+                )
+        else:
+            self._send_telegram(payload, _build_payment_required_message(payload, target.train_no, reservation.rsv_id, seat_info))
 
     def _try_reserve_srt(self, payload: dict) -> None:
         from infrastructure.external.srt import SRT, SeatType
@@ -171,8 +216,51 @@ class InternalServer:
 
         option = _to_srt_reserve_option(payload.get("seat_preference", "general_first"), SeatType)
         reservation = client.reserve(target, passengers=_build_srt_passengers(payload), option=option)
+        seat_info = _seat_preference_label(payload.get("seat_preference", "general_first"))
+        if getattr(reservation, "tickets", None):
+            seat_info = ", ".join(str(ticket) for ticket in reservation.tickets)
+
         logging.info("  ✓ %s 예약 성공! 예약번호: %s", target.train_number, reservation.reservation_number)
-        self._send_telegram(payload, _build_success_message(payload, target.train_number, reservation.reservation_number))
+        self._send_telegram(payload, _build_success_message(payload, target.train_number, reservation.reservation_number, seat_info))
+
+        if _has_payment_info(payload):
+            card_type = "S" if payload.get("is_corporate_card") else "J"
+            try:
+                paid = client.pay_with_card(
+                    reservation,
+                    payload["card_number"],
+                    payload["card_password_2"],
+                    payload["birth_date"],
+                    payload["card_expire"],
+                    card_type=card_type,
+                )
+                if paid:
+                    self._send_telegram(
+                        payload,
+                        _build_payment_complete_message(
+                            payload,
+                            target.train_number,
+                            reservation.reservation_number,
+                            reservation.reservation_number,
+                            seat_info,
+                        ),
+                    )
+                else:
+                    self._send_telegram(
+                        payload,
+                        _build_payment_required_message(payload, target.train_number, reservation.reservation_number, seat_info),
+                    )
+            except Exception as exc:
+                logging.warning("자동 결제 실패(SRT): %s", exc)
+                self._send_telegram(
+                    payload,
+                    _build_payment_required_message(payload, target.train_number, reservation.reservation_number, seat_info),
+                )
+        else:
+            self._send_telegram(
+                payload,
+                _build_payment_required_message(payload, target.train_number, reservation.reservation_number, seat_info),
+            )
 
     def _send_telegram(self, payload: dict, message: str) -> None:
         token = payload.get("telegram_token", "").strip()
@@ -235,6 +323,7 @@ def _extract_run_context(payload: dict) -> dict:
     login = payload.get("login", {}) if isinstance(payload.get("login"), dict) else {}
     telegram = payload.get("telegram", {}) if isinstance(payload.get("telegram"), dict) else {}
     search = payload.get("search", {}) if isinstance(payload.get("search"), dict) else {}
+    payment = payload.get("payment", {}) if isinstance(payload.get("payment"), dict) else {}
 
     return {
         "rail_type": str(payload.get("rail_type", "ktx")).lower(),
@@ -251,6 +340,11 @@ def _extract_run_context(payload: dict) -> dict:
         "child": _to_non_negative_int(search.get("child", payload.get("child", 0)), default=0),
         "path_index": _to_non_negative_int(search.get("path_index", payload.get("path_index", 0)), default=0),
         "selected_train_no": str(search.get("selected_train_no") or payload.get("selected_train_no") or "").strip(),
+        "card_number": (payment.get("card_number") or payload.get("card_number") or "").strip(),
+        "card_password_2": (payment.get("card_password_2") or payload.get("card_password_2") or "").strip(),
+        "is_corporate_card": _to_bool(payment.get("is_corporate_card", payload.get("is_corporate_card", False))),
+        "birth_date": (payment.get("birth_date") or payload.get("birth_date") or "").strip(),
+        "card_expire": (payment.get("card_expire") or payload.get("card_expire") or "").strip(),
     }
 
 
@@ -300,22 +394,125 @@ def _to_srt_reserve_option(seat_preference: str, seat_type_class: object) -> obj
     return mapping.get(str(seat_preference).lower(), seat_type_class.GENERAL_FIRST)
 
 
+def _rail_type_label(payload: dict) -> str:
+    return "SRT" if str(payload.get("rail_type", "ktx")).lower() == "srt" else "KTX"
+
+
+def _seat_preference_label(seat_preference: str) -> str:
+    mapping = {
+        "general_first": "일반실 우선",
+        "general_only": "일반실만",
+        "special_first": "특실 우선",
+        "special_only": "특실만",
+    }
+    return mapping.get(str(seat_preference).lower(), "일반실 우선")
+
+
+def _format_passenger_summary(payload: dict) -> tuple[int, str]:
+    adult = _to_non_negative_int(payload.get("adult"), default=1)
+    child = _to_non_negative_int(payload.get("child"), default=0)
+    senior = _to_non_negative_int(payload.get("path_index"), default=0)
+
+    parts = []
+    if adult:
+        parts.append(f"어른 {adult}")
+    if child:
+        parts.append(f"어린이 {child}")
+    if senior:
+        parts.append(f"경로 {senior}")
+
+    total = adult + child + senior
+    if total <= 0:
+        return 1, "어른 1"
+    return total, ", ".join(parts)
+
+
+def _format_date_iso(yyyymmdd: str) -> str:
+    if len(yyyymmdd) != 8 or not yyyymmdd.isdigit():
+        return yyyymmdd
+    dt = datetime.strptime(yyyymmdd, "%Y%m%d")
+    return dt.strftime("%Y-%m-%d")
+
+
+def _format_date_with_day(yyyymmdd: str) -> str:
+    iso = _format_date_iso(yyyymmdd)
+    if len(yyyymmdd) != 8 or not yyyymmdd.isdigit():
+        return iso
+    dt = datetime.strptime(yyyymmdd, "%Y%m%d")
+    days = ["월", "화", "수", "목", "금", "토", "일"]
+    return f"{iso}({days[dt.weekday()]})"
+
+
+def _format_date_time(payload: dict) -> str:
+    date = _format_date_with_day(payload.get("departure_date", ""))
+    time_hhmm = _normalize_time_to_hhmm(payload.get("departure_time"), default="0700")
+    return f"{date} {time_hhmm[:2]}:{time_hhmm[2:]}"
+
+
 def _build_start_message(payload: dict) -> str:
+    rail_type = _rail_type_label(payload)
+    total, breakdown = _format_passenger_summary(payload)
+    seat_info = _seat_preference_label(payload.get("seat_preference", "general_first"))
     return (
-        "🚀 예약 시작\n"
-        f"- 노선: {payload.get('departure')}→{payload.get('arrival')}\n"
-        f"- 일시: {payload.get('departure_date')} {payload.get('departure_time')}\n"
-        f"- 열차: {payload.get('selected_train_no')}"
+        f"🚀 {rail_type} 예약 시작\n"
+        f"좌석 옵션: {seat_info}\n"
+        f"예약 인원: 총 {total}명 ({breakdown})\n"
+        "선택 열차 정보:\n"
+        f"- {payload.get('selected_train_no')} | {_format_date_time(payload)} | {payload.get('departure')}→{payload.get('arrival')}\n"
+        "예약 매크로 실행이 시작되었습니다."
     )
 
 
-def _build_success_message(payload: dict, train_no: str, reservation_no: str) -> str:
+def _build_success_message(payload: dict, train_no: str, reservation_no: str, seat_info: str) -> str:
+    rail_type = _rail_type_label(payload)
+    time_hhmm = _normalize_time_to_hhmm(payload.get("departure_time"), default="0700")
     return (
-        "✅ 예약 성공\n"
-        f"- 열차: {train_no}\n"
-        f"- 구간: {payload.get('departure')}→{payload.get('arrival')}\n"
-        f"- 예약번호: {reservation_no}"
+        f"✅ {rail_type} 예약 성공\n"
+        f"열차: {train_no}\n"
+        f"구간: {payload.get('departure')} → {payload.get('arrival')}\n"
+        f"출발: {_format_date_iso(payload.get('departure_date', ''))} {time_hhmm[:2]}:{time_hhmm[2:]}\n"
+        f"좌석 정보: {seat_info}\n"
+        f"예약번호: {reservation_no}"
     )
+
+
+def _build_payment_complete_message(payload: dict, train_no: str, reservation_no: str, payment_no: str, seat_info: str) -> str:
+    rail_type = _rail_type_label(payload)
+    time_hhmm = _normalize_time_to_hhmm(payload.get("departure_time"), default="0700")
+    return (
+        f"💳 {rail_type} 결제 완료\n"
+        f"열차: {train_no}\n"
+        f"구간: {payload.get('departure')} → {payload.get('arrival')}\n"
+        f"출발: {_format_date_iso(payload.get('departure_date', ''))} {time_hhmm[:2]}:{time_hhmm[2:]}\n"
+        f"좌석 정보: {seat_info}\n"
+        f"예약번호: {reservation_no}\n"
+        f"결제예약번호: {payment_no}"
+    )
+
+
+def _build_payment_required_message(payload: dict, train_no: str, reservation_no: str, seat_info: str) -> str:
+    rail_type = _rail_type_label(payload)
+    time_hhmm = _normalize_time_to_hhmm(payload.get("departure_time"), default="0700")
+    return (
+        f"⚠️ {rail_type} 결제 필요\n"
+        f"열차: {train_no}\n"
+        f"구간: {payload.get('departure')} → {payload.get('arrival')}\n"
+        f"출발: {_format_date_iso(payload.get('departure_date', ''))} {time_hhmm[:2]}:{time_hhmm[2:]}\n"
+        f"좌석 정보: {seat_info}\n"
+        f"예약번호: {reservation_no}\n"
+        "자동 결제를 진행하지 못했습니다.\n"
+        "앱에서 10분 내 결제를 완료해주세요."
+    )
+
+
+def _has_payment_info(payload: dict) -> bool:
+    required = [
+        payload.get("card_number", "").strip(),
+        payload.get("card_password_2", "").strip(),
+        payload.get("birth_date", "").strip(),
+        payload.get("card_expire", "").strip(),
+    ]
+    return all(required)
 
 
 def _format_ktx_status(train: object) -> str:
