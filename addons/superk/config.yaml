@@ -1,5 +1,5 @@
 name: "SuperK"
-version: "0.1.12"
+version: "0.1.13"
 slug: "superk"
 description: "SuperK train reservation service with Flask web UI"
 url: "https://github.com/jinizest/SuperK"
