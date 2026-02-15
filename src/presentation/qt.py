@@ -27,6 +27,10 @@ from src.constants.ui import (
 )
 
 
+PURCHASE_LIMIT_ERROR_CODE = "ERR911531"
+PURCHASE_LIMIT_ERROR_MAX_RETRY = 3
+
+
 def resource_path(relative_path):
     """PyInstaller로 패키징된 리소스 파일의 절대 경로를 반환합니다."""
     try:
@@ -1196,6 +1200,7 @@ class TrainReservationApp(QMainWindow):
         """KTX 예약 루프"""
         selected_trains = [self.ktx_trains[i] for i in selected_indices]
         attempt = 0
+        purchase_limit_error_counts: dict[str, int] = {}
 
         # 승객 정보 수집
         passengers = []
@@ -1284,6 +1289,19 @@ class TrainReservationApp(QMainWindow):
                             QTimer.singleShot(0, lambda: self.ktx_start_btn.setEnabled(True))
                             QTimer.singleShot(0, lambda: self.ktx_stop_btn.setEnabled(False))
                             return
+                        if PURCHASE_LIMIT_ERROR_CODE in reservation.message:
+                            train_key = self._build_train_error_key(train)
+                            count = purchase_limit_error_counts.get(train_key, 0) + 1
+                            purchase_limit_error_counts[train_key] = count
+                            self._send_ktx_telegram_message(
+                                self._build_purchase_limit_error_message(train, reservation.message, count)
+                            )
+                            if count >= PURCHASE_LIMIT_ERROR_MAX_RETRY:
+                                self.add_log("⏹ 구매 한도 오류 반복으로 KTX 예약을 중지합니다")
+                                self.is_ktx_running = False
+                                QTimer.singleShot(0, lambda: self.ktx_start_btn.setEnabled(True))
+                                QTimer.singleShot(0, lambda: self.ktx_stop_btn.setEnabled(False))
+                                return
                         delay = random.uniform(RETRY_DELAY_MIN, RETRY_DELAY_MAX)
                         if idx == len(selected_trains) - 1:
                             self.add_log(f"⏳ {delay:.1f}초 후 재시도...")
@@ -1421,6 +1439,27 @@ class TrainReservationApp(QMainWindow):
             f"출발: {train.departure_time.strftime('%Y-%m-%d %H:%M')}",
             f"오류: {reservation_message}",
             "중복 예약 오류(WRR800029)로 예약을 중지했습니다.",
+        ])
+
+    def _build_train_error_key(self, train: TrainSchedule) -> str:
+        """동일 열차 판별을 위한 키 생성"""
+        return "|".join([
+            train.train_number,
+            train.departure_station,
+            train.arrival_station,
+            train.departure_time.strftime("%Y%m%d%H%M"),
+        ])
+
+    def _build_purchase_limit_error_message(self, train: TrainSchedule, reservation_message: str, count: int) -> str:
+        """구매 한도 초과 오류 메시지 생성"""
+        return "\n".join([
+            "⚠️ 구매 한도 초과 오류",
+            f"열차: {train.train_number}",
+            f"구간: {train.departure_station} → {train.arrival_station}",
+            f"출발: {train.departure_time.strftime('%Y-%m-%d %H:%M')}",
+            f"오류: {reservation_message}",
+            f"동일 알람: {count}/{PURCHASE_LIMIT_ERROR_MAX_RETRY}",
+            "동일 열차에서 오류가 반복되면 예약을 자동 중지합니다.",
         ])
 
     def _schedule_ktx_restart(self, selected_indices: list[int]):
@@ -1587,6 +1626,7 @@ class TrainReservationApp(QMainWindow):
         """SRT 예약 루프"""
         selected_trains: list[TrainSchedule] = [self.srt_trains[i] for i in selected_indices]
         attempt = 0
+        purchase_limit_error_counts: dict[str, int] = {}
 
         # 승객 정보 수집
         passengers = []
@@ -1680,6 +1720,19 @@ class TrainReservationApp(QMainWindow):
                             QTimer.singleShot(0, lambda: self.srt_start_btn.setEnabled(True))
                             QTimer.singleShot(0, lambda: self.srt_stop_btn.setEnabled(False))
                             return
+                        if PURCHASE_LIMIT_ERROR_CODE in reservation.message:
+                            train_key = self._build_train_error_key(train)
+                            count = purchase_limit_error_counts.get(train_key, 0) + 1
+                            purchase_limit_error_counts[train_key] = count
+                            self._send_ktx_telegram_message(
+                                self._build_purchase_limit_error_message(train, reservation.message, count)
+                            )
+                            if count >= PURCHASE_LIMIT_ERROR_MAX_RETRY:
+                                self.add_log("⏹ 구매 한도 오류 반복으로 SRT 예약을 중지합니다")
+                                self.is_srt_running = False
+                                QTimer.singleShot(0, lambda: self.srt_start_btn.setEnabled(True))
+                                QTimer.singleShot(0, lambda: self.srt_stop_btn.setEnabled(False))
+                                return
                         delay = random.uniform(RETRY_DELAY_MIN, RETRY_DELAY_MAX)
                         if idx == len(selected_trains) - 1:
                             self.add_log(f"⏳ {delay:.1f}초 후 재시도...")
