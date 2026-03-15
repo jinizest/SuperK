@@ -1,4 +1,5 @@
 import abc
+import os
 try:
     import curl_cffi
     HAS_CURL_CFFI = True
@@ -17,9 +18,14 @@ from typing import Dict, List, Pattern
 EMAIL_REGEX: Pattern = re.compile(r"[^@]+@[^@]+\.[^@]+")
 PHONE_NUMBER_REGEX: Pattern = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
 
+SRT_APP_VERSION = os.getenv("SRT_APP_VERSION", "2.0.40")
+CHROME_MAJOR_VERSION = os.getenv("SRT_CHROME_MAJOR_VERSION", "136")
+
 USER_AGENT = (
-    "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36"
-    "(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38"
+    "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 "
+    f"Chrome/{CHROME_MAJOR_VERSION}.0.7103.125 Mobile Safari/537.36 "
+    f"SRT-APP-Android V.{SRT_APP_VERSION}"
 )
 
 DEFAULT_HEADERS: Dict[str, str] = {
@@ -515,7 +521,10 @@ class NetFunnelHelper:
         "Cache-Control": "no-cache",
         "sec-ch-ua-platform": "Android",
         "User-Agent": USER_AGENT,
-        "sec-ch-ua": '"Chromium";v="136", "Android WebView";v="136", "Not=A/Brand";v="99"',
+        "sec-ch-ua": (
+            f'"Chromium";v="{CHROME_MAJOR_VERSION}", '
+            f'"Android WebView";v="{CHROME_MAJOR_VERSION}", "Not=A/Brand";v="99"'
+        ),
         "sec-ch-ua-mobile": "?1",
         "Accept": "*/*",
         "X-Requested-With": "kr.co.srail.newapp",
