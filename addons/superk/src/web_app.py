@@ -327,6 +327,7 @@ def _extract_run_context(payload: dict) -> dict:
 
     return {
         "rail_type": str(payload.get("rail_type", "ktx")).lower(),
+        "korail_version": str(payload.get("korail_version") or "").strip(),
         "user_id": (login.get("user_id") or payload.get("user_id") or "").strip(),
         "user_pw": (login.get("user_pw") or payload.get("user_pw") or "").strip(),
         "telegram_token": (telegram.get("telegram_token") or payload.get("telegram_token") or "").strip(),
@@ -596,6 +597,10 @@ def search_real_trains(payload: dict) -> list[dict]:
         TrainType as KorailTrainType,
     )
 
+    korail_version = str(payload.get("korail_version") or "").strip()
+    if korail_version:
+        os.environ["KORAIL_VERSION"] = korail_version
+
     client = Korail(auto_login=False)
     client.login(user_id, user_pw)
     passengers = []
@@ -687,6 +692,7 @@ def build_form_values(options: dict) -> dict:
 
     return {
         "rail_type": options.get("rail_type", "ktx"),
+        "korail_version": options.get("korail_version", ""),
         "user_id": login.get("user_id", options.get("user_id", "")),
         "user_pw": login.get("user_pw", options.get("user_pw", "")),
         "save_login": _to_bool(login.get("save_login", options.get("save_login", False))),
@@ -728,6 +734,7 @@ def build_waiting_form_values() -> dict:
     """초기 렌더링 시 add-on 저장값을 노출하지 않는 입력 대기 기본값."""
     return {
         "rail_type": "ktx",
+        "korail_version": "",
         "user_id": "",
         "user_pw": "",
         "save_login": False,

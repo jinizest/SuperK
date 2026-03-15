@@ -31,6 +31,7 @@
 - 웹 UI 입력값은 Home Assistant Add-on의 `/data/options.json` 값을 기본값으로 불러옵니다.
 - 즉, Add-on 구성(설정)에서 `login`, `telegram`, `search`, `payment` 항목에 값을 넣어두면 UI가 자동으로 채웁니다.
 - 민감 정보(`password` 타입)는 Home Assistant에서 시크릿 형태로 관리할 수 있습니다.
+- KTX에서 최신 앱 버전 오류가 날 경우 Add-on 옵션의 `korail_version`에 앱 버전 문자열(예: `260301001`)을 입력하면 해당 값으로 우선 로그인 시도합니다.
 
 ## 접속 이슈(about:blank#blocked)
 - 기본 포트는 `5555`입니다.
