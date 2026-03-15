@@ -37,6 +37,12 @@ DEFAULT_HEADERS = {
     "Accept-Encoding": "gzip",
 }
 
+KORAIL_VERSION_CANDIDATES = (
+    "250305001",
+    "240531001",
+)
+
+
 KORAIL_MOBILE = "https://smart.letskorail.com:443/classes/com.korail.mobile"
 API_ENDPOINTS = {
     "login": f"{KORAIL_MOBILE}.login.Login",
@@ -515,7 +521,7 @@ class Korail:
             self._session = requests.session()
         self._session.headers.update(DEFAULT_HEADERS)
         self._device = "AD"
-        self._version = "240531001"
+        self._version = KORAIL_VERSION_CANDIDATES[0]
         self._key = "korail1234567890"
         self._idx = None
         self.korail_id = korail_id
@@ -565,36 +571,46 @@ class Korail:
             else "2"
         )
 
-        data = {
-            "Device": self._device,
-            "Version": self._version,
-            "Key": self._key,
-            "txtMemberNo": self.korail_id,
-            "txtPwd": self.__enc_password(self.korail_pw),
-            "txtInputFlg": txt_input_flg,
-            "idx": self._idx,
-        }
+        enc_password = self.__enc_password(self.korail_pw)
+        last_error = ("로그인에 실패했습니다.", None)
 
-        r = self._session.post(API_ENDPOINTS["login"], data=data)
-        self._log(r.text)
-        j = json.loads(r.text)
+        for version in KORAIL_VERSION_CANDIDATES:
+            data = {
+                "Device": self._device,
+                "Version": version,
+                "Key": self._key,
+                "txtMemberNo": self.korail_id,
+                "txtPwd": enc_password,
+                "txtInputFlg": txt_input_flg,
+                "idx": self._idx,
+            }
 
-        if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
-            # self._key = j['Key']
-            self.membership_number = j["strMbCrdNo"]
-            self.name = j["strCustNm"]
-            self.email = j["strEmailAdr"]
-            self.phone_number = j["strCpNo"]
-            print(
-                f"로그인 성공: {self.name} (멤버십번호: {self.membership_number}, 전화번호: {self.phone_number})"
-            )
-            self.logined = True
-            return True
+            r = self._session.post(API_ENDPOINTS["login"], data=data)
+            self._log(r.text)
+            j = json.loads(r.text)
+
+            if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
+                self._version = version
+                # self._key = j['Key']
+                self.membership_number = j["strMbCrdNo"]
+                self.name = j["strCustNm"]
+                self.email = j["strEmailAdr"]
+                self.phone_number = j["strCpNo"]
+                print(
+                    f"로그인 성공: {self.name} (멤버십번호: {self.membership_number}, 전화번호: {self.phone_number})"
+                )
+                self.logined = True
+                return True
+
+            h_msg_txt = j.get("h_msg_txt") or "로그인에 실패했습니다."
+            h_msg_cd = j.get("h_msg_cd")
+            last_error = (h_msg_txt, h_msg_cd)
+
+            if "MACRO ERROR" not in h_msg_txt and "최신 버전" not in h_msg_txt:
+                break
 
         self.logined = False
-        h_msg_txt = j.get("h_msg_txt") or "로그인에 실패했습니다."
-        h_msg_cd = j.get("h_msg_cd")
-        raise KorailError(h_msg_txt, h_msg_cd)
+        raise KorailError(*last_error)
 
     def logout(self):
         r = self._session.get(API_ENDPOINTS["logout"])
