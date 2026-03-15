@@ -590,8 +590,11 @@ class Korail:
             )
             self.logined = True
             return True
+
         self.logined = False
-        return False
+        h_msg_txt = j.get("h_msg_txt") or "로그인에 실패했습니다."
+        h_msg_cd = j.get("h_msg_cd")
+        raise KorailError(h_msg_txt, h_msg_cd)
 
     def logout(self):
         r = self._session.get(API_ENDPOINTS["logout"])
