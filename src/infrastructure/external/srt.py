@@ -18,8 +18,8 @@ from typing import Dict, List, Pattern
 EMAIL_REGEX: Pattern = re.compile(r"[^@]+@[^@]+\.[^@]+")
 PHONE_NUMBER_REGEX: Pattern = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
 
-SRT_APP_VERSION = os.getenv("SRT_APP_VERSION", "2.0.40")
-CHROME_MAJOR_VERSION = os.getenv("SRT_CHROME_MAJOR_VERSION", "136")
+SRT_APP_VERSION = os.getenv("SRT_APP_VERSION", "2.0.41")
+CHROME_MAJOR_VERSION = os.getenv("SRT_CHROME_MAJOR_VERSION", "137")
 
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) "
