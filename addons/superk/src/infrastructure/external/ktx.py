@@ -7,6 +7,7 @@ korail2.korail2
 """
 
 import base64
+import os
 try:
     import curl_cffi
     HAS_CURL_CFFI = True
@@ -37,10 +38,37 @@ DEFAULT_HEADERS = {
     "Accept-Encoding": "gzip",
 }
 
-KORAIL_VERSION_CANDIDATES = (
-    "250305001",
-    "240531001",
-)
+def _load_korail_version_candidates():
+    """Load Korail app version candidates from env, newest first."""
+
+    env_candidates = os.environ.get("KORAIL_VERSION_CANDIDATES", "")
+    versions = [
+        value.strip()
+        for value in env_candidates.split(",")
+        if value.strip()
+    ]
+
+    # 단일 버전 고정이 필요할 때 사용 (예: KORAIL_VERSION=260301001)
+    force_version = os.environ.get("KORAIL_VERSION", "").strip()
+    if force_version:
+        versions.insert(0, force_version)
+
+    # 최신값부터 순차 시도 (실제 서비스에서 차단 시 다음 버전으로 fallback)
+    versions.extend(
+        [
+            "260301001",
+            "260212001",
+            "251218001",
+            "250305001",
+            "240531001",
+        ]
+    )
+
+    # 순서 유지하면서 중복 제거
+    return tuple(dict.fromkeys(versions))
+
+
+KORAIL_VERSION_CANDIDATES = _load_korail_version_candidates()
 
 
 KORAIL_MOBILE = "https://smart.letskorail.com:443/classes/com.korail.mobile"
@@ -571,10 +599,10 @@ class Korail:
             else "2"
         )
 
-        enc_password = self.__enc_password(self.korail_pw)
         last_error = ("로그인에 실패했습니다.", None)
 
         for version in KORAIL_VERSION_CANDIDATES:
+            enc_password = self.__enc_password(self.korail_pw)
             data = {
                 "Device": self._device,
                 "Version": version,
