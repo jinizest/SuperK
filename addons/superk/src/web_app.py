@@ -54,12 +54,14 @@ class InternalServer:
         self._status = "idle"
         self._last_message = "대기 중"
         self._active_payload: dict = {}
+        self._completed_required_keys: set[str] = set()
 
     def start(self, payload: dict | None = None) -> None:
         if self._thread and self._thread.is_alive():
             return
 
         self._active_payload = payload or {}
+        self._completed_required_keys = set()
         self._running.set()
         self._status = "running"
         self._last_message = "서버 시작"
@@ -72,6 +74,7 @@ class InternalServer:
         self._status = "stopped"
         self._last_message = "서버 중지"
         self._active_payload = {}
+        self._completed_required_keys = set()
         logging.info("Internal server stopping")
 
     def _run_loop(self) -> None:
@@ -92,7 +95,20 @@ class InternalServer:
             self._last_message = f"예약 시도 #{attempt}"
             logging.info("🔄 예약 시도 #%s", attempt)
             try:
-                self._try_reserve(payload)
+                completed_key = self._try_reserve(payload)
+                required_keys = {
+                    _selected_train_key(train)
+                    for train in selected_trains
+                    if train.get("required")
+                }
+                if required_keys:
+                    self._completed_required_keys.add(completed_key)
+                    remaining = required_keys - self._completed_required_keys
+                    if remaining:
+                        self._last_message = f"필수 열차 예약 진행 중 ({len(required_keys) - len(remaining)}/{len(required_keys)})"
+                        logging.info("Required trains remaining: %s", len(remaining))
+                        continue
+
                 self._status = "completed"
                 self._last_message = "예약 성공"
                 self._running.clear()
@@ -113,9 +129,16 @@ class InternalServer:
             logging.info("⏳ %.1f초 후 재시도...", delay)
             time.sleep(delay)
 
-    def _try_reserve(self, payload: dict) -> None:
+    def _try_reserve(self, payload: dict) -> str:
         rail_type = payload.get("rail_type", "ktx")
         selected_trains = payload.get("selected_trains") or []
+        required_trains = [train for train in selected_trains if train.get("required")]
+        if required_trains:
+            selected_trains = [
+                train
+                for train in required_trains
+                if _selected_train_key(train) not in self._completed_required_keys
+            ]
         errors = []
 
         for selected in selected_trains:
@@ -132,7 +155,7 @@ class InternalServer:
                     self._try_reserve_srt(attempt_payload)
                 else:
                     self._try_reserve_ktx(attempt_payload)
-                return
+                return _selected_train_key(attempt_payload)
             except RuntimeError as exc:
                 errors.append(f"{attempt_payload['selected_train_no']}: {exc}")
                 logging.info(
@@ -356,6 +379,19 @@ def _to_non_negative_int(value: object, default: int = 0) -> int:
         return default
 
 
+def _selected_train_key(train: dict) -> str:
+    return "|".join(
+        [
+            str(train.get("rail_type", "ktx")).lower(),
+            str(train.get("train_no") or train.get("selected_train_no") or "").strip(),
+            str(train.get("departure", "")).strip(),
+            str(train.get("arrival", "")).strip(),
+            str(train.get("departure_date", "")).strip(),
+            str(train.get("departure_time", "")).strip(),
+        ]
+    )
+
+
 def _normalize_selected_trains(raw: object, defaults: dict) -> list[dict]:
     if not isinstance(raw, list):
         raw = []
@@ -383,6 +419,7 @@ def _normalize_selected_trains(raw: object, defaults: dict) -> list[dict]:
             ),
             "depart_at": str(item.get("depart_at") or "").strip(),
             "arrive_at": str(item.get("arrive_at") or "").strip(),
+            "required": _to_bool(item.get("required", False)),
         }
         key = (
             entry["rail_type"],
@@ -409,6 +446,7 @@ def _normalize_selected_trains(raw: object, defaults: dict) -> list[dict]:
                 "departure_time": defaults["departure_time"],
                 "depart_at": "",
                 "arrive_at": "",
+                "required": False,
             }
         )
 
@@ -589,8 +627,9 @@ def _build_start_message(payload: dict) -> str:
         time_text = f"{time_hhmm[:2]}:{time_hhmm[2:]}"
         if arrive_hhmm:
             time_text += f"→{arrive_hhmm[:2]}:{arrive_hhmm[2:]}"
+        required_text = " [필수]" if selected.get("required") else ""
         train_lines.append(
-            f"- {selected.get('train_no')} | "
+            f"- {selected.get('train_no')}{required_text} | "
             f"{_format_date_with_day(selected.get('departure_date', ''))} "
             f"{time_text} | "
             f"{selected.get('departure')}→{selected.get('arrival')}"

@@ -273,7 +273,7 @@
         color: var(--text);
         padding: 8px 9px;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto auto;
         gap: 8px;
         align-items: center;
         font-size: 12px;
@@ -288,6 +288,15 @@
         background: rgba(255, 77, 94, 0.18);
         color: #fff;
         cursor: pointer;
+      }
+
+      .required-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: #d9e3f3;
+        font-size: 11px;
+        white-space: nowrap;
       }
 
       .train-status {
@@ -516,8 +525,18 @@
           row.className = 'selected-train-row';
           row.innerHTML = `
             <span class="train-main">${selectedTrainLabel(train)}</span>
+            <label class="required-control">
+              <input class="toggle required-toggle" type="checkbox" ${train.required ? 'checked' : ''}>
+              필수
+            </label>
             <button type="button" class="btn-remove" aria-label="remove">×</button>
           `;
+          row.querySelector('.required-toggle').addEventListener('change', (event) => {
+            const key = selectedTrainKey(train);
+            const target = state.selected_trains.find((item) => selectedTrainKey(item) === key);
+            if (target) target.required = event.target.checked;
+            train.required = event.target.checked;
+          });
           row.querySelector('button').addEventListener('click', () => {
             const key = selectedTrainKey(train);
             state.selected_trains = state.selected_trains.filter((item) => selectedTrainKey(item) !== key);
@@ -746,6 +765,7 @@
             arrive_at: train.arrive_at,
             route: train.route,
             status: train.status,
+            required: false,
           };
           const key = selectedTrainKey(selectedTrain);
           const item = document.createElement('button');
