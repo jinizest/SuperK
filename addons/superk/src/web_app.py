@@ -76,8 +76,8 @@ class InternalServer:
 
     def _run_loop(self) -> None:
         payload = _extract_run_context(self._active_payload)
-        selected_train_no = payload.get("selected_train_no")
-        if not selected_train_no:
+        selected_trains = payload.get("selected_trains") or []
+        if not selected_trains:
             logging.warning("선택된 열차 번호가 없어 예약을 시작할 수 없습니다")
             self._status = "stopped"
             self._last_message = "선택된 열차가 없습니다"
@@ -98,7 +98,7 @@ class InternalServer:
                 self._running.clear()
                 return
             except RuntimeError as exc:
-                logging.info("  ✗ %s 예약 실패: %s", selected_train_no, exc)
+                logging.info("  selected train list reservation failed: %s", exc)
                 if "WRR800029" in str(exc):
                     self._send_telegram(payload, f"⚠️ 중복 예약 감지: {exc}")
                     self._status = "stopped"
@@ -115,10 +115,37 @@ class InternalServer:
 
     def _try_reserve(self, payload: dict) -> None:
         rail_type = payload.get("rail_type", "ktx")
-        if rail_type == "srt":
-            self._try_reserve_srt(payload)
-            return
-        self._try_reserve_ktx(payload)
+        selected_trains = payload.get("selected_trains") or []
+        errors = []
+
+        for selected in selected_trains:
+            attempt_payload = {**payload, **selected}
+            attempt_payload["rail_type"] = selected.get("rail_type") or rail_type
+            attempt_payload["selected_train_no"] = (
+                selected.get("train_no") or selected.get("selected_train_no", "")
+            )
+            if not attempt_payload["selected_train_no"]:
+                continue
+
+            try:
+                if attempt_payload.get("rail_type") == "srt":
+                    self._try_reserve_srt(attempt_payload)
+                else:
+                    self._try_reserve_ktx(attempt_payload)
+                return
+            except RuntimeError as exc:
+                errors.append(f"{attempt_payload['selected_train_no']}: {exc}")
+                logging.info(
+                    "  %s reservation failed: %s",
+                    attempt_payload["selected_train_no"],
+                    exc,
+                )
+                if "WRR800029" in str(exc):
+                    raise
+
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        raise RuntimeError("No selected trains")
 
     def _try_reserve_ktx(self, payload: dict) -> None:
         from infrastructure.external.ktx import Korail, ReserveOption, TrainType as KorailTrainType
@@ -319,13 +346,68 @@ def _to_non_negative_int(value: object, default: int = 0) -> int:
         return default
 
 
+def _normalize_selected_trains(raw: object, defaults: dict) -> list[dict]:
+    if not isinstance(raw, list):
+        raw = []
+
+    selected = []
+    seen = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+
+        train_no = str(item.get("train_no") or item.get("selected_train_no") or "").strip()
+        if not train_no:
+            continue
+
+        entry = {
+            "rail_type": str(item.get("rail_type") or defaults["rail_type"]).lower(),
+            "train_no": train_no,
+            "departure": (item.get("departure") or defaults["departure"]).strip(),
+            "arrival": (item.get("arrival") or defaults["arrival"]).strip(),
+            "departure_date": _normalize_date_yyyymmdd(
+                item.get("departure_date") or defaults["departure_date"]
+            ),
+            "departure_time": _normalize_time_to_hhmm(
+                item.get("departure_time") or defaults["departure_time"]
+            ),
+        }
+        key = (
+            entry["rail_type"],
+            entry["train_no"],
+            entry["departure"],
+            entry["arrival"],
+            entry["departure_date"],
+            entry["departure_time"],
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(entry)
+
+    legacy_train_no = str(defaults.get("selected_train_no") or "").strip()
+    if legacy_train_no and not selected:
+        selected.append(
+            {
+                "rail_type": defaults["rail_type"],
+                "train_no": legacy_train_no,
+                "departure": defaults["departure"],
+                "arrival": defaults["arrival"],
+                "departure_date": defaults["departure_date"],
+                "departure_time": defaults["departure_time"],
+            }
+        )
+
+    return selected
+
+
 def _extract_run_context(payload: dict) -> dict:
     login = payload.get("login", {}) if isinstance(payload.get("login"), dict) else {}
     telegram = payload.get("telegram", {}) if isinstance(payload.get("telegram"), dict) else {}
     search = payload.get("search", {}) if isinstance(payload.get("search"), dict) else {}
     payment = payload.get("payment", {}) if isinstance(payload.get("payment"), dict) else {}
 
-    return {
+    context = {
         "rail_type": str(payload.get("rail_type", "ktx")).lower(),
         "korail_version": str(payload.get("korail_version") or "").strip(),
         "user_id": (login.get("user_id") or payload.get("user_id") or "").strip(),
@@ -347,6 +429,11 @@ def _extract_run_context(payload: dict) -> dict:
         "birth_date": (payment.get("birth_date") or payload.get("birth_date") or "").strip(),
         "card_expire": (payment.get("card_expire") or payload.get("card_expire") or "").strip(),
     }
+    context["selected_trains"] = _normalize_selected_trains(
+        search.get("selected_trains") or payload.get("selected_trains"),
+        context,
+    )
+    return context
 
 
 def _build_ktx_passengers(payload: dict) -> list[object]:

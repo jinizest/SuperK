@@ -265,6 +265,31 @@
         box-shadow: 0 0 0 2px var(--primary-soft) inset;
       }
 
+      .selected-train-row {
+        width: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 9px;
+        background: rgba(10, 20, 36, 0.82);
+        color: var(--text);
+        padding: 8px 9px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .btn-remove {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 77, 94, 0.18);
+        color: #fff;
+        cursor: pointer;
+      }
+
       .train-status {
         font-size: 10px;
         color: #d4e5ff;
@@ -398,6 +423,16 @@
         </div>
       </div>
 
+      <div id="selectedTrainPanel" class="panel collapsible hidden">
+        <button type="button" class="section-toggle" aria-expanded="true">
+          <span class="section-title">선택한 열차</span>
+          <span class="section-chevron">??/span>
+        </button>
+        <div class="section-body">
+          <div id="selectedTrainList" class="train-list"></div>
+        </div>
+      </div>
+
       <div class="panel collapsible" data-collapsed="true">
         <button type="button" class="section-toggle" aria-expanded="false">
           <span class="section-title">💳 결제 정보</span>
@@ -444,12 +479,74 @@
     </div>
 
     <script>
-      const state = { rail_type: '{{ form_values.rail_type }}' || 'ktx', selected_train_no: null };
+      const state = { rail_type: '{{ form_values.rail_type }}' || 'ktx', selected_train_no: null, selected_trains: [] };
       let logPollingTimer = null;
       const presetValues = {{ preset_values|tojson }};
       const $ = (id) => document.getElementById(id);
       const value = (id) => $(id).value;
       const checked = (id) => $(id).checked;
+
+      function selectedTrainKey(train) {
+        return [
+          train.rail_type,
+          train.train_no,
+          train.departure,
+          train.arrival,
+          train.departure_date,
+          train.departure_time,
+        ].join('|');
+      }
+
+      function selectedTrainLabel(train) {
+        return `${train.train_no} | ${train.departure_date} ${train.depart_at || train.departure_time} -> ${train.arrive_at || ''} (${train.departure}->${train.arrival})`;
+      }
+
+      function syncSelectedTrainNo() {
+        state.selected_train_no = state.selected_trains[0]?.train_no || null;
+      }
+
+      function renderSelectedTrains() {
+        const panel = $('selectedTrainPanel');
+        const list = $('selectedTrainList');
+        if (!panel || !list) return;
+        list.innerHTML = '';
+
+        state.selected_trains.forEach((train) => {
+          const row = document.createElement('div');
+          row.className = 'selected-train-row';
+          row.innerHTML = `
+            <span class="train-main">${selectedTrainLabel(train)}</span>
+            <button type="button" class="btn-remove" aria-label="remove">×</button>
+          `;
+          row.querySelector('button').addEventListener('click', () => {
+            const key = selectedTrainKey(train);
+            state.selected_trains = state.selected_trains.filter((item) => selectedTrainKey(item) !== key);
+            syncSelectedTrainNo();
+            renderSelectedTrains();
+            document.querySelectorAll('.train-item').forEach((node) => {
+              if (node.dataset.trainKey === key) node.classList.remove('selected');
+            });
+          });
+          list.appendChild(row);
+        });
+
+        panel.classList.toggle('hidden', state.selected_trains.length === 0);
+        panel.classList.remove('is-collapsed');
+        panel.querySelector('.section-toggle')?.setAttribute('aria-expanded', 'true');
+      }
+
+      function toggleSelectedTrain(train) {
+        const key = selectedTrainKey(train);
+        const exists = state.selected_trains.some((item) => selectedTrainKey(item) === key);
+        if (exists) {
+          state.selected_trains = state.selected_trains.filter((item) => selectedTrainKey(item) !== key);
+        } else {
+          state.selected_trains.push(train);
+        }
+        syncSelectedTrainNo();
+        renderSelectedTrains();
+        return !exists;
+      }
 
       async function loadLogs() {
         const res = await fetch('/api/logs?tail=1000&reservation_only=1');
@@ -594,6 +691,7 @@
             child: value('child'),
             path_index: value('path_index'),
             selected_train_no: state.selected_train_no,
+            selected_trains: state.selected_trains,
           },
           payment: {
             card_number: value('card_number'),
@@ -636,23 +734,35 @@
         const list = $('trainList');
         list.innerHTML = '';
 
-        (data.trains || []).forEach((train, idx) => {
+        (data.trains || []).forEach((train) => {
+          const selectedTrain = {
+            rail_type: state.rail_type,
+            train_no: train.train_no,
+            departure: value('departure'),
+            arrival: value('arrival'),
+            departure_date: value('departure_date'),
+            departure_time: value('departure_time'),
+            depart_at: train.depart_at,
+            arrive_at: train.arrive_at,
+            route: train.route,
+            status: train.status,
+          };
+          const key = selectedTrainKey(selectedTrain);
           const item = document.createElement('button');
           item.className = 'train-item';
           item.type = 'button';
+          item.dataset.trainKey = key;
           item.innerHTML = `
             <span class="train-main">${train.train_no} | ${train.date} ${train.depart_at} → ${train.arrive_at} (${train.route})</span>
             <span class="train-status">${train.status}</span>
           `;
 
           item.addEventListener('click', () => {
-            state.selected_train_no = train.train_no;
-            document.querySelectorAll('.train-item').forEach((node) => node.classList.remove('selected'));
-            item.classList.add('selected');
+            const selected = toggleSelectedTrain(selectedTrain);
+            item.classList.toggle('selected', selected);
           });
 
-          if (idx === 0) {
-            state.selected_train_no = train.train_no;
+          if (state.selected_trains.some((selected) => selectedTrainKey(selected) === key)) {
             item.classList.add('selected');
           }
 
@@ -665,6 +775,10 @@
       });
 
       $('startBtn').addEventListener('click', async () => {
+        if (!state.selected_trains.length) {
+          alert('예약 시도할 열차를 선택하세요.');
+          return;
+        }
         const res = await fetch('/api/run/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
