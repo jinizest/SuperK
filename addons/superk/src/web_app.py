@@ -541,12 +541,28 @@ def _build_start_message(payload: dict) -> str:
     rail_type = _rail_type_label(payload)
     total, breakdown = _format_passenger_summary(payload)
     seat_info = _seat_preference_label(payload.get("seat_preference", "general_first"))
+    train_lines = []
+    for selected in payload.get("selected_trains") or []:
+        time_hhmm = _normalize_time_to_hhmm(selected.get("departure_time"), default="0700")
+        train_lines.append(
+            f"- {selected.get('train_no')} | "
+            f"{_format_date_with_day(selected.get('departure_date', ''))} "
+            f"{time_hhmm[:2]}:{time_hhmm[2:]} | "
+            f"{selected.get('departure')}→{selected.get('arrival')}"
+        )
+
+    if not train_lines:
+        train_lines.append(
+            f"- {payload.get('selected_train_no')} | {_format_date_time(payload)} | "
+            f"{payload.get('departure')}→{payload.get('arrival')}"
+        )
+
     return (
         f"🚀 {rail_type} 예약 시작\n"
         f"좌석 옵션: {seat_info}\n"
         f"예약 인원: 총 {total}명 ({breakdown})\n"
-        "선택 열차 정보:\n"
-        f"- {payload.get('selected_train_no')} | {_format_date_time(payload)} | {payload.get('departure')}→{payload.get('arrival')}\n"
+        f"선택 열차: {len(train_lines)}개\n"
+        f"{chr(10).join(train_lines)}\n"
         "예약 매크로 실행이 시작되었습니다."
     )
 
