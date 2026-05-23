@@ -71,6 +71,58 @@ def _load_korail_version_candidates():
 KORAIL_VERSION_CANDIDATES = _load_korail_version_candidates()
 
 
+def _load_korail_device_candidates() -> tuple[str, ...]:
+    env_candidates = os.environ.get("KORAIL_DEVICE_CANDIDATES", "")
+    devices = [value.strip().upper() for value in env_candidates.split(",") if value.strip()]
+    devices.extend(["AD", "IP"])
+    return tuple(dict.fromkeys(devices))
+
+
+KORAIL_DEVICE_CANDIDATES = _load_korail_device_candidates()
+
+
+def _discover_korail_version_candidates(timeout: int = 3) -> tuple[str, ...]:
+    """Best-effort online discovery for newest Korail app version codes."""
+    urls = (
+        "https://d.apkpure.com/b/APK/com.korail.talk?version=latest",
+        "https://apkpure.com/korailtalk/com.korail.talk",
+    )
+    discovered: list[str] = []
+    pattern = re.compile(r"\b(\d{9})\b")
+
+    for url in urls:
+        try:
+            if HAS_CURL_CFFI:
+                response = curl_cffi.requests.get(url, timeout=timeout, allow_redirects=True)
+            else:
+                response = requests.get(url, timeout=timeout, allow_redirects=True)
+            text = getattr(response, "text", "") or ""
+            for match in pattern.findall(text):
+                discovered.append(match)
+        except Exception:
+            continue
+
+    return tuple(dict.fromkeys(discovered))
+
+
+def _merge_discovered_candidates() -> tuple[str, ...]:
+    discovered = _discover_korail_version_candidates()
+    if not discovered:
+        return KORAIL_VERSION_CANDIDATES
+    merged = [*discovered, *KORAIL_VERSION_CANDIDATES]
+    return tuple(dict.fromkeys(merged))
+
+
+def _prioritize_korail_version(version: str) -> None:
+    """Move a successful Korail version to the front for subsequent logins."""
+    global KORAIL_VERSION_CANDIDATES
+    v = (version or "").strip()
+    if not v:
+        return
+    ordered = [v, *[item for item in KORAIL_VERSION_CANDIDATES if item != v]]
+    KORAIL_VERSION_CANDIDATES = tuple(dict.fromkeys(ordered))
+
+
 KORAIL_MOBILE = "https://smart.letskorail.com:443/classes/com.korail.mobile"
 API_ENDPOINTS = {
     "login": f"{KORAIL_MOBILE}.login.Login",
@@ -601,41 +653,49 @@ class Korail:
 
         last_error = ("로그인에 실패했습니다.", None)
 
-        for version in KORAIL_VERSION_CANDIDATES:
-            enc_password = self.__enc_password(self.korail_pw)
-            data = {
-                "Device": self._device,
-                "Version": version,
-                "Key": self._key,
-                "txtMemberNo": self.korail_id,
-                "txtPwd": enc_password,
-                "txtInputFlg": txt_input_flg,
-                "idx": self._idx,
-            }
+        version_candidates = _merge_discovered_candidates()
+        for version in version_candidates:
+            for device in KORAIL_DEVICE_CANDIDATES:
+                self._device = device
+                enc_password = self.__enc_password(self.korail_pw)
+                data = {
+                    "Device": self._device,
+                    "Version": version,
+                    "Key": self._key,
+                    "txtMemberNo": self.korail_id,
+                    "txtPwd": enc_password,
+                    "txtInputFlg": txt_input_flg,
+                    "idx": self._idx,
+                }
 
-            r = self._session.post(API_ENDPOINTS["login"], data=data)
-            self._log(r.text)
-            j = json.loads(r.text)
+                r = self._session.post(API_ENDPOINTS["login"], data=data)
+                self._log(r.text)
+                j = json.loads(r.text)
 
-            if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
-                self._version = version
-                # self._key = j['Key']
-                self.membership_number = j["strMbCrdNo"]
-                self.name = j["strCustNm"]
-                self.email = j["strEmailAdr"]
-                self.phone_number = j["strCpNo"]
-                print(
-                    f"로그인 성공: {self.name} (멤버십번호: {self.membership_number}, 전화번호: {self.phone_number})"
-                )
-                self.logined = True
-                return True
+                if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
+                    self._version = version
+                    _prioritize_korail_version(version)
+                    # self._key = j['Key']
+                    self.membership_number = j["strMbCrdNo"]
+                    self.name = j["strCustNm"]
+                    self.email = j["strEmailAdr"]
+                    self.phone_number = j["strCpNo"]
+                    print(
+                        f"로그인 성공: {self.name} (멤버십번호: {self.membership_number}, 전화번호: {self.phone_number})"
+                    )
+                    self.logined = True
+                    return True
 
-            h_msg_txt = j.get("h_msg_txt") or "로그인에 실패했습니다."
-            h_msg_cd = j.get("h_msg_cd")
-            last_error = (h_msg_txt, h_msg_cd)
+                h_msg_txt = j.get("h_msg_txt") or "로그인에 실패했습니다."
+                h_msg_cd = j.get("h_msg_cd")
+                last_error = (h_msg_txt, h_msg_cd)
 
-            if "MACRO ERROR" not in h_msg_txt and "최신 버전" not in h_msg_txt:
-                break
+                if "MACRO ERROR" not in h_msg_txt and "최신 버전" not in h_msg_txt:
+                    break
+            else:
+                continue
+            break
+
 
         self.logined = False
         raise KorailError(*last_error)
