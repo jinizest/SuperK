@@ -56,6 +56,9 @@ def _load_korail_version_candidates():
     # 최신값부터 순차 시도 (실제 서비스에서 차단 시 다음 버전으로 fallback)
     versions.extend(
         [
+            "260523001",  # 2026-05 fallback
+            "260501001",
+            "260401001",
             "260301001",
             "260212001",
             "251218001",
