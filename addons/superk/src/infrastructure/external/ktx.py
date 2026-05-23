@@ -30,6 +30,19 @@ PHONE_NUMBER_REGEX = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
 
 USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 14; SM-S912N Build/UP1A.231005.007)"
 
+
+def _load_user_agent_candidates() -> tuple[str, ...]:
+    env_candidates = os.environ.get("KORAIL_USER_AGENT_CANDIDATES", "")
+    user_agents = [value.strip() for value in env_candidates.split("||") if value.strip()]
+    user_agents.extend(
+        [
+            USER_AGENT,
+            "okhttp/4.12.0",
+            "Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+        ]
+    )
+    return tuple(dict.fromkeys(user_agents))
+
 DEFAULT_HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     "User-Agent": USER_AGENT,
@@ -37,6 +50,8 @@ DEFAULT_HEADERS = {
     "Connection": "Keep-Alive",
     "Accept-Encoding": "gzip",
 }
+
+USER_AGENT_CANDIDATES = _load_user_agent_candidates()
 
 def _load_korail_version_candidates():
     """Load Korail app version candidates from env, newest first."""
@@ -659,42 +674,50 @@ class Korail:
         version_candidates = _merge_discovered_candidates()
         for version in version_candidates:
             for device in KORAIL_DEVICE_CANDIDATES:
-                self._device = device
-                enc_password = self.__enc_password(self.korail_pw)
-                data = {
-                    "Device": self._device,
-                    "Version": version,
-                    "Key": self._key,
-                    "txtMemberNo": self.korail_id,
-                    "txtPwd": enc_password,
-                    "txtInputFlg": txt_input_flg,
-                    "idx": self._idx,
-                }
+                for user_agent in USER_AGENT_CANDIDATES:
+                    self._device = device
+                    self._session.headers["User-Agent"] = user_agent
+                    enc_password = self.__enc_password(self.korail_pw)
+                    data = {
+                        "Device": self._device,
+                        "Version": version,
+                        "Key": self._key,
+                        "txtMemberNo": self.korail_id,
+                        "txtPwd": enc_password,
+                        "txtInputFlg": txt_input_flg,
+                        "idx": self._idx,
+                    }
 
-                r = self._session.post(API_ENDPOINTS["login"], data=data)
-                self._log(r.text)
-                j = json.loads(r.text)
+                    r = self._session.post(API_ENDPOINTS["login"], data=data)
+                    self._log(r.text)
+                    j = json.loads(r.text)
 
-                if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
-                    self._version = version
-                    _prioritize_korail_version(version)
-                    # self._key = j['Key']
-                    self.membership_number = j["strMbCrdNo"]
-                    self.name = j["strCustNm"]
-                    self.email = j["strEmailAdr"]
-                    self.phone_number = j["strCpNo"]
-                    print(
-                        f"로그인 성공: {self.name} (멤버십번호: {self.membership_number}, 전화번호: {self.phone_number})"
-                    )
-                    self.logined = True
-                    return True
+                    if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
+                        self._version = version
+                        _prioritize_korail_version(version)
+                        # self._key = j['Key']
+                        self.membership_number = j["strMbCrdNo"]
+                        self.name = j["strCustNm"]
+                        self.email = j["strEmailAdr"]
+                        self.phone_number = j["strCpNo"]
+                        print(
+                            f"로그인 성공: {self.name} (멤버십번호: {self.membership_number}, 전화번호: {self.phone_number})"
+                        )
+                        self.logined = True
+                        return True
 
-                h_msg_txt = j.get("h_msg_txt") or "로그인에 실패했습니다."
-                h_msg_cd = j.get("h_msg_cd")
-                last_error = (h_msg_txt, h_msg_cd)
+                    h_msg_txt = j.get("h_msg_txt") or "로그인에 실패했습니다."
+                    h_msg_cd = j.get("h_msg_cd")
+                    last_error = (h_msg_txt, h_msg_cd)
 
-                if "MACRO ERROR" not in h_msg_txt and "최신 버전" not in h_msg_txt:
+                    if "MACRO ERROR" in h_msg_txt or "최신 버전" in h_msg_txt:
+                        time.sleep(0.15)
+                        continue
+
                     break
+                else:
+                    continue
+                break
             else:
                 continue
             break
