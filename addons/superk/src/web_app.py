@@ -165,6 +165,11 @@ class InternalServer:
         target = next((t for t in trains if t.train_no == payload["selected_train_no"]), None)
         if not target:
             raise RuntimeError("선택한 열차를 찾을 수 없습니다")
+        message_payload = _with_actual_train_times(
+            payload,
+            depart_time=getattr(target, "dep_time", ""),
+            arrive_time=getattr(target, "arr_time", ""),
+        )
 
         logging.info("  → %s 예약 시도 중...", target.train_no)
         if not (target.has_special_seat() or target.has_general_seat() or target.has_waiting_list()):
@@ -182,7 +187,7 @@ class InternalServer:
             logging.exception("좌석 정보 조회 실패")
 
         logging.info("  ✓ %s 예약 성공! 예약번호: %s", target.train_no, reservation.rsv_id)
-        self._send_telegram(payload, _build_success_message(payload, target.train_no, reservation.rsv_id, seat_info))
+        self._send_telegram(message_payload, _build_success_message(message_payload, target.train_no, reservation.rsv_id, seat_info))
 
         if _has_payment_info(payload):
             card_type = "S" if payload.get("is_corporate_card") else "J"
@@ -197,9 +202,9 @@ class InternalServer:
                 )
                 if paid:
                     self._send_telegram(
-                        payload,
+                        message_payload,
                         _build_payment_complete_message(
-                            payload,
+                            message_payload,
                             target.train_no,
                             reservation.rsv_id,
                             reservation.rsv_id,
@@ -208,17 +213,17 @@ class InternalServer:
                     )
                 else:
                     self._send_telegram(
-                        payload,
-                        _build_payment_required_message(payload, target.train_no, reservation.rsv_id, seat_info),
+                        message_payload,
+                        _build_payment_required_message(message_payload, target.train_no, reservation.rsv_id, seat_info),
                     )
             except Exception as exc:
                 logging.warning("자동 결제 실패(KTX): %s", exc)
                 self._send_telegram(
-                    payload,
-                    _build_payment_required_message(payload, target.train_no, reservation.rsv_id, seat_info),
+                    message_payload,
+                    _build_payment_required_message(message_payload, target.train_no, reservation.rsv_id, seat_info),
                 )
         else:
-            self._send_telegram(payload, _build_payment_required_message(payload, target.train_no, reservation.rsv_id, seat_info))
+            self._send_telegram(message_payload, _build_payment_required_message(message_payload, target.train_no, reservation.rsv_id, seat_info))
 
     def _try_reserve_srt(self, payload: dict) -> None:
         from infrastructure.external.srt import SRT, SeatType
@@ -236,6 +241,11 @@ class InternalServer:
         target = next((t for t in trains if t.train_number == payload["selected_train_no"]), None)
         if not target:
             raise RuntimeError("선택한 열차를 찾을 수 없습니다")
+        message_payload = _with_actual_train_times(
+            payload,
+            depart_time=getattr(target, "dep_time", ""),
+            arrive_time=getattr(target, "arr_time", ""),
+        )
 
         logging.info("  → %s 예약 시도 중...", target.train_number)
         if not (target.general_seat_available() or target.special_seat_available() or target.reserve_standby_available()):
@@ -248,7 +258,7 @@ class InternalServer:
             seat_info = ", ".join(str(ticket) for ticket in reservation.tickets)
 
         logging.info("  ✓ %s 예약 성공! 예약번호: %s", target.train_number, reservation.reservation_number)
-        self._send_telegram(payload, _build_success_message(payload, target.train_number, reservation.reservation_number, seat_info))
+        self._send_telegram(message_payload, _build_success_message(message_payload, target.train_number, reservation.reservation_number, seat_info))
 
         if _has_payment_info(payload):
             card_type = "S" if payload.get("is_corporate_card") else "J"
@@ -263,9 +273,9 @@ class InternalServer:
                 )
                 if paid:
                     self._send_telegram(
-                        payload,
+                        message_payload,
                         _build_payment_complete_message(
-                            payload,
+                            message_payload,
                             target.train_number,
                             reservation.reservation_number,
                             reservation.reservation_number,
@@ -274,19 +284,19 @@ class InternalServer:
                     )
                 else:
                     self._send_telegram(
-                        payload,
-                        _build_payment_required_message(payload, target.train_number, reservation.reservation_number, seat_info),
+                        message_payload,
+                        _build_payment_required_message(message_payload, target.train_number, reservation.reservation_number, seat_info),
                     )
             except Exception as exc:
                 logging.warning("자동 결제 실패(SRT): %s", exc)
                 self._send_telegram(
-                    payload,
-                    _build_payment_required_message(payload, target.train_number, reservation.reservation_number, seat_info),
+                    message_payload,
+                    _build_payment_required_message(message_payload, target.train_number, reservation.reservation_number, seat_info),
                 )
         else:
             self._send_telegram(
-                payload,
-                _build_payment_required_message(payload, target.train_number, reservation.reservation_number, seat_info),
+                message_payload,
+                _build_payment_required_message(message_payload, target.train_number, reservation.reservation_number, seat_info),
             )
 
     def _send_telegram(self, payload: dict, message: str) -> None:
@@ -371,6 +381,8 @@ def _normalize_selected_trains(raw: object, defaults: dict) -> list[dict]:
             "departure_time": _normalize_time_to_hhmm(
                 item.get("departure_time") or defaults["departure_time"]
             ),
+            "depart_at": str(item.get("depart_at") or "").strip(),
+            "arrive_at": str(item.get("arrive_at") or "").strip(),
         }
         key = (
             entry["rail_type"],
@@ -395,6 +407,8 @@ def _normalize_selected_trains(raw: object, defaults: dict) -> list[dict]:
                 "arrival": defaults["arrival"],
                 "departure_date": defaults["departure_date"],
                 "departure_time": defaults["departure_time"],
+                "depart_at": "",
+                "arrive_at": "",
             }
         )
 
@@ -537,17 +551,48 @@ def _format_date_time(payload: dict) -> str:
     return f"{date} {time_hhmm[:2]}:{time_hhmm[2:]}"
 
 
+def _compact_time(value: object, default: str = "0700") -> str:
+    candidate = str(value or "").strip().replace(":", "")
+    return _normalize_time_to_hhmm(candidate, default=default)
+
+
+def _message_departure_time(payload: dict) -> str:
+    return _compact_time(
+        payload.get("actual_departure_time") or payload.get("depart_at") or payload.get("departure_time"),
+        default="0700",
+    )
+
+
+def _message_arrival_time(payload: dict) -> str:
+    return _compact_time(
+        payload.get("actual_arrival_time") or payload.get("arrive_at"),
+        default="",
+    )
+
+
+def _with_actual_train_times(payload: dict, depart_time: object = "", arrive_time: object = "") -> dict:
+    return {
+        **payload,
+        "actual_departure_time": _compact_time(depart_time or payload.get("depart_at") or payload.get("departure_time")),
+        "actual_arrival_time": _compact_time(arrive_time or payload.get("arrive_at"), default=""),
+    }
+
+
 def _build_start_message(payload: dict) -> str:
     rail_type = _rail_type_label(payload)
     total, breakdown = _format_passenger_summary(payload)
     seat_info = _seat_preference_label(payload.get("seat_preference", "general_first"))
     train_lines = []
     for selected in payload.get("selected_trains") or []:
-        time_hhmm = _normalize_time_to_hhmm(selected.get("departure_time"), default="0700")
+        time_hhmm = _compact_time(selected.get("depart_at") or selected.get("departure_time"), default="0700")
+        arrive_hhmm = _compact_time(selected.get("arrive_at"), default="")
+        time_text = f"{time_hhmm[:2]}:{time_hhmm[2:]}"
+        if arrive_hhmm:
+            time_text += f"→{arrive_hhmm[:2]}:{arrive_hhmm[2:]}"
         train_lines.append(
             f"- {selected.get('train_no')} | "
             f"{_format_date_with_day(selected.get('departure_date', ''))} "
-            f"{time_hhmm[:2]}:{time_hhmm[2:]} | "
+            f"{time_text} | "
             f"{selected.get('departure')}→{selected.get('arrival')}"
         )
 
@@ -569,12 +614,16 @@ def _build_start_message(payload: dict) -> str:
 
 def _build_success_message(payload: dict, train_no: str, reservation_no: str, seat_info: str) -> str:
     rail_type = _rail_type_label(payload)
-    time_hhmm = _normalize_time_to_hhmm(payload.get("departure_time"), default="0700")
+    time_hhmm = _message_departure_time(payload)
+    arrive_hhmm = _message_arrival_time(payload)
+    time_text = f"{time_hhmm[:2]}:{time_hhmm[2:]}"
+    if arrive_hhmm:
+        time_text += f"→{arrive_hhmm[:2]}:{arrive_hhmm[2:]}"
     return (
         f"✅ {rail_type} 예약 성공\n"
         f"열차: {train_no}\n"
         f"구간: {payload.get('departure')} → {payload.get('arrival')}\n"
-        f"출발: {_format_date_iso(payload.get('departure_date', ''))} {time_hhmm[:2]}:{time_hhmm[2:]}\n"
+        f"시간: {_format_date_iso(payload.get('departure_date', ''))} {time_text}\n"
         f"좌석 정보: {seat_info}\n"
         f"예약번호: {reservation_no}"
     )
@@ -582,12 +631,16 @@ def _build_success_message(payload: dict, train_no: str, reservation_no: str, se
 
 def _build_payment_complete_message(payload: dict, train_no: str, reservation_no: str, payment_no: str, seat_info: str) -> str:
     rail_type = _rail_type_label(payload)
-    time_hhmm = _normalize_time_to_hhmm(payload.get("departure_time"), default="0700")
+    time_hhmm = _message_departure_time(payload)
+    arrive_hhmm = _message_arrival_time(payload)
+    time_text = f"{time_hhmm[:2]}:{time_hhmm[2:]}"
+    if arrive_hhmm:
+        time_text += f"→{arrive_hhmm[:2]}:{arrive_hhmm[2:]}"
     return (
         f"💳 {rail_type} 결제 완료\n"
         f"열차: {train_no}\n"
         f"구간: {payload.get('departure')} → {payload.get('arrival')}\n"
-        f"출발: {_format_date_iso(payload.get('departure_date', ''))} {time_hhmm[:2]}:{time_hhmm[2:]}\n"
+        f"시간: {_format_date_iso(payload.get('departure_date', ''))} {time_text}\n"
         f"좌석 정보: {seat_info}\n"
         f"예약번호: {reservation_no}\n"
         f"결제예약번호: {payment_no}"
@@ -596,12 +649,16 @@ def _build_payment_complete_message(payload: dict, train_no: str, reservation_no
 
 def _build_payment_required_message(payload: dict, train_no: str, reservation_no: str, seat_info: str) -> str:
     rail_type = _rail_type_label(payload)
-    time_hhmm = _normalize_time_to_hhmm(payload.get("departure_time"), default="0700")
+    time_hhmm = _message_departure_time(payload)
+    arrive_hhmm = _message_arrival_time(payload)
+    time_text = f"{time_hhmm[:2]}:{time_hhmm[2:]}"
+    if arrive_hhmm:
+        time_text += f"→{arrive_hhmm[:2]}:{arrive_hhmm[2:]}"
     return (
         f"⚠️ {rail_type} 결제 필요\n"
         f"열차: {train_no}\n"
         f"구간: {payload.get('departure')} → {payload.get('arrival')}\n"
-        f"출발: {_format_date_iso(payload.get('departure_date', ''))} {time_hhmm[:2]}:{time_hhmm[2:]}\n"
+        f"시간: {_format_date_iso(payload.get('departure_date', ''))} {time_text}\n"
         f"좌석 정보: {seat_info}\n"
         f"예약번호: {reservation_no}\n"
         "자동 결제를 진행하지 못했습니다.\n"
