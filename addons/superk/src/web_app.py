@@ -790,7 +790,14 @@ def api_search_trains():
         trains = search_real_trains(payload)
     except Exception as exc:
         logging.exception("Train search failed")
-        return jsonify({"trains": [], "error": str(exc)}), 400
+        message = str(exc)
+        if "MACRO ERROR" in message or "최신 버전" in message:
+            message = (
+                "코레일 서버가 현재 앱 버전을 차단했습니다. "
+                "코드에 등록된 버전 후보는 자동 시도되며, 그래도 실패하면 `korail_version`에 최신값을 입력해주세요. "
+                f"(원본 오류: {exc})"
+            )
+        return jsonify({"trains": [], "error": message}), 400
     logging.info(
         "Train search requested: type=%s, %s->%s, date=%s, time=%s, seat=%s",
         payload.get("rail_type", "ktx"),
