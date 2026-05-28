@@ -1,3 +1,5 @@
+from logging.handlers import RotatingFileHandler
+
 from addons.superk.src.web_app import (
     _normalize_date_yyyymmdd,
     _normalize_time_to_hhmm,
@@ -7,7 +9,9 @@ from addons.superk.src.web_app import (
     _extract_run_context,
     _to_ktx_reserve_option,
     _is_reservation_log_line,
+    configure_logging,
 )
+from addons.superk.src import web_app
 
 
 def test_normalize_time_accepts_hhmmss():
@@ -74,10 +78,26 @@ def test_to_ktx_reserve_option_defaults_to_general_first():
     assert _to_ktx_reserve_option("special_only", StubOption) == "so"
 
 
-
 def test_is_reservation_log_line_filters_http_access_logs():
     assert _is_reservation_log_line('2026 [INFO] 192.168.0.1 "GET /api/logs HTTP/1.1"') is False
 
 
 def test_is_reservation_log_line_allows_reservation_events():
     assert _is_reservation_log_line("2026 [INFO] 🔄 예약 시도 #1") is True
+
+
+def test_configure_logging_keeps_single_log_file(tmp_path, monkeypatch):
+    log_path = tmp_path / "superk.log"
+    monkeypatch.setattr(web_app, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(web_app, "LOG_FILE_PATH", str(log_path))
+
+    configure_logging()
+
+    file_handlers = [
+        handler
+        for handler in web_app.logging.getLogger().handlers
+        if isinstance(handler, web_app.logging.FileHandler)
+    ]
+    assert len(file_handlers) == 1
+    assert file_handlers[0].baseFilename == str(log_path)
+    assert not isinstance(file_handlers[0], RotatingFileHandler)
