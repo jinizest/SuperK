@@ -12,8 +12,10 @@
 
 ## 동작
 - 웹 UI: `http://<HA_HOST>:<설정한 외부 포트>` (기본 내부 포트 `5555`)
+- 런타임 데이터/옵션 폴더: 컨테이너 내부 `/data` (Home Assistant Supervisor가 add-on별 영구 저장소로 관리)
 - 로그 파일: `/data/superk.log`
 - 옵션 파일: `/data/options.json`
+- 로그 파일은 `/data/superk.log` 1개만 유지합니다.
 
 ## 참고
 현재 워커는 안정적인 add-on 기동을 위한 기본 루프(heartbeat 로그)로 구성되어 있습니다.

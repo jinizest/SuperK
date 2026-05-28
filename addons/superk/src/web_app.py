@@ -855,7 +855,7 @@ def configure_logging() -> None:
     stream_handler.setFormatter(formatter)
     root.addHandler(stream_handler)
 
-    file_handler = logging.FileHandler(LOG_FILE_PATH)
+    file_handler = logging.FileHandler(LOG_FILE_PATH, encoding="utf-8")
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
 
