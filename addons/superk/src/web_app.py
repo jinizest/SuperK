@@ -462,7 +462,18 @@ def _resolve_korail_version(payload: dict) -> str:
         value = payload["korail_version"]
     else:
         value = load_options().get("korail_version", "")
-    return str(value or "").strip()
+    version = str(value or "").strip()
+    # Home Assistant keeps previously saved add-on options when config.yaml's
+    # default changes. Migrate the old built-in default so existing installs
+    # actually try the current contract after upgrading.
+    if version == "250722001":
+        logging.info(
+            "Migrating stale Korail API version %s to %s",
+            version,
+            "261028001",
+        )
+        return "261028001"
+    return version
 
 
 def _extract_run_context(payload: dict) -> dict:

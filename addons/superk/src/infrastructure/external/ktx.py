@@ -33,7 +33,7 @@ EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 PHONE_NUMBER_REGEX = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
 
 USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 14; SM-S912N Build/UP1A.231005.007)"
-KORAIL_APP_VERSION = "7.0.10"
+KORAIL_APP_VERSION = "7.1.0"
 
 
 def _load_user_agent_candidates() -> tuple[str, ...]:
@@ -195,6 +195,7 @@ def _load_korail_version_candidates():
     # 최신값부터 순차 시도 (실제 서비스에서 차단 시 다음 버전으로 fallback)
     versions.extend(
         [
+            "261028001",  # KorailTalk 7.1.0 API contract (reported 2026-10)
             "250722001",  # Korail+ 7.0.10 API contract
             "250601002",
             "260523001",  # 2026-05 fallback
@@ -884,7 +885,11 @@ class Korail:
 
                     if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
                         self._version = version
-                        logging.info("Korail login app version=%s", version)
+                        logging.info(
+                            "Korail login accepted API version=%s app_version=%s",
+                            version,
+                            KORAIL_APP_VERSION,
+                        )
                         _prioritize_korail_version(version)
                         self._key = j.get("Key", self._key)
                         self.membership_number = j["strMbCrdNo"]

@@ -58,7 +58,9 @@ HTTP 403 / DynaPath errors can still have other causes.
 
 ### Korail protocol version
 
-The default API contract is `250722001` with `AppVersion=7.0.10`. These are
+The default API contract is `261028001` with `AppVersion=7.1.0`. Existing
+installations that still have the former built-in value `250722001` migrate to
+the new API version at runtime. These are
 different values: `korail_version` controls the API `Version` field, while the
 app version is sent as `AppVersion`. The client does not brute-force versions;
 it uses the configured value or the known candidate list because repeated login
