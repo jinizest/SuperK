@@ -7,6 +7,7 @@ korail2.korail2
 """
 
 import base64
+import logging
 import os
 import random
 try:
@@ -971,6 +972,7 @@ class Korail:
 
         if self._result_check(j):
             train_infos = j.get("trn_infos", [])
+            train_infos_type = type(train_infos).__name__
             if isinstance(train_infos, dict):
                 train_infos = train_infos.get("trn_info", [])
             # Korail responses have appeared as either a nested object or a
@@ -980,6 +982,7 @@ class Korail:
             if not isinstance(train_infos, list):
                 train_infos = []
             trains = [Train(info) for info in train_infos if isinstance(info, dict)]
+            raw_train_count = len(trains)
             filter_fns = [lambda x: x.has_seat()]
 
             if include_no_seats:
@@ -990,6 +993,23 @@ class Korail:
             trains = [t for t in trains if any(f(t) for f in filter_fns)]
 
             if not trains:
+                logging.warning(
+                    "Korail ScheduleView returned no train rows: "
+                    "dep=%r arr=%r date=%s time=%s train_type=%s "
+                    "result=%r code=%r message=%r response_keys=%s "
+                    "trn_infos_type=%s raw_train_count=%d",
+                    dep,
+                    arr,
+                    date,
+                    time,
+                    train_type,
+                    j.get("strResult"),
+                    j.get("h_msg_cd"),
+                    j.get("h_msg_txt"),
+                    sorted(str(key) for key in j),
+                    train_infos_type,
+                    raw_train_count,
+                )
                 raise NoResultsError()
 
             return trains
