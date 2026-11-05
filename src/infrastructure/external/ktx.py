@@ -33,6 +33,7 @@ EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 PHONE_NUMBER_REGEX = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
 
 USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 14; SM-S912N Build/UP1A.231005.007)"
+KORAIL_APP_VERSION = "7.0.10"
 
 
 def _load_user_agent_candidates() -> tuple[str, ...]:
@@ -194,7 +195,8 @@ def _load_korail_version_candidates():
     # 최신값부터 순차 시도 (실제 서비스에서 차단 시 다음 버전으로 fallback)
     versions.extend(
         [
-            "250601002",  # dhfhfk/korail2 bypassDynapath default
+            "250722001",  # Korail+ 7.0.10 API contract
+            "250601002",
             "260523001",  # 2026-05 fallback
             "260501001",
             "260401001",
@@ -802,7 +804,16 @@ class Korail:
 
     def __enc_password(self, password):
         url = API_ENDPOINTS["code"]
-        data = {"code": "app.login.cphd"}
+        data = {
+            "Device": self._device,
+            "Version": self._version,
+            "AppVersion": KORAIL_APP_VERSION,
+            "Key": self._key,
+            "code": "app.login.cphd",
+            "deviceWidth": "1440",
+            "deviceHeight": "3120",
+            "OSVersion": "37",
+        }
         r = self._session.post(url, data=data)
         j = json.loads(r.text)
 
@@ -824,6 +835,15 @@ class Korail:
         if korail_pw:
             self.korail_pw = korail_pw
 
+        # Refresh the service session before the credential-bound requests.
+        try:
+            self._session.post(
+                "https://smart.letskorail.com:443/file/CACHE/MobileService.cache",
+                data={"timeStamp": str(int(time.time() * 1000))},
+            )
+        except Exception as exc:
+            self._log(f"service check failed (ignored): {exc}")
+
         txt_input_flg = (
             "5"
             if EMAIL_REGEX.match(self.korail_id)
@@ -842,16 +862,19 @@ class Korail:
         for version in version_candidates:
             for device in KORAIL_DEVICE_CANDIDATES:
                 for user_agent in USER_AGENT_CANDIDATES:
+                    self._version = version
                     self._device = device
                     self._session.headers["User-Agent"] = user_agent
                     enc_password = self.__enc_password(self.korail_pw)
                     data = {
                         "Device": self._device,
                         "Version": version,
+                        "AppVersion": KORAIL_APP_VERSION,
                         "Key": self._key,
                         "txtMemberNo": self.korail_id,
                         "txtPwd": enc_password,
                         "txtInputFlg": txt_input_flg,
+                        "checkValidPw": "Y",
                         "idx": self._idx,
                     }
 
@@ -977,6 +1000,8 @@ class Korail:
         data = {
             "Device": self._device,
             "Version": self._version,
+            "AppVersion": KORAIL_APP_VERSION,
+            "Key": self._key,
             "Sid": "",
             "txtMenuId": "11",
             "radJobId": "1",

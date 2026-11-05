@@ -55,3 +55,11 @@ This change addresses the shared-ID failure reported in
 Offline tests cover persistence, concurrent initialization, and explicit overrides.
 They do not establish that Korail will accept a request from a given installation;
 HTTP 403 / DynaPath errors can still have other causes.
+
+### Korail protocol version
+
+The default API contract is `250722001` with `AppVersion=7.0.10`. These are
+different values: `korail_version` controls the API `Version` field, while the
+app version is sent as `AppVersion`. The client does not brute-force versions;
+it uses the configured value or the known candidate list because repeated login
+attempts can trigger Korail's access restriction.
