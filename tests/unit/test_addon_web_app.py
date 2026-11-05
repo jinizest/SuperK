@@ -101,3 +101,38 @@ def test_configure_logging_keeps_single_log_file(tmp_path, monkeypatch):
     assert len(file_handlers) == 1
     assert file_handlers[0].baseFilename == str(log_path)
     assert not isinstance(file_handlers[0], RotatingFileHandler)
+
+
+def test_korail_version_uses_addon_options_when_web_payload_omits_it():
+    from unittest.mock import patch
+    with patch.object(web_app, "load_options", return_value={"korail_version": "260523001"}):
+        assert web_app._resolve_korail_version({}) == "260523001"
+        assert web_app._extract_run_context({})["korail_version"] == "260523001"
+        assert web_app._resolve_korail_version({"korail_version": ""}) == ""
+        assert web_app._resolve_korail_version({"korail_version": "260601001"}) == "260601001"
+
+
+def test_search_passes_addon_version_to_korail_client():
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from unittest.mock import patch
+    captured = {}
+    class Client:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+        def login(self, *args):
+            return True
+        def search_train(self, **kwargs):
+            return []
+    fake = ModuleType("infrastructure.external.ktx")
+    fake.Korail = Client
+    fake.AdultPassenger = fake.ChildPassenger = fake.SeniorPassenger = lambda count: count
+    fake.TrainType = SimpleNamespace(KTX="100")
+    with patch.dict(sys.modules, {"infrastructure.external.ktx": fake}), patch.object(
+        web_app, "load_options", return_value={"korail_version": "260523001"}
+    ):
+        assert web_app.search_real_trains({
+            "user_id": "test", "user_pw": "test", "departure": "동대구", "arrival": "행신",
+            "departure_date": "20261108", "departure_time": "0900",
+        }) == []
+        assert captured["korail_version"] == "260523001"

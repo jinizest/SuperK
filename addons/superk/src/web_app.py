@@ -453,6 +453,18 @@ def _normalize_selected_trains(raw: object, defaults: dict) -> list[dict]:
     return selected
 
 
+def _resolve_korail_version(payload: dict) -> str:
+    """Use add-on options when the web client omits the app version.
+
+    An explicitly supplied empty string still requests automatic selection.
+    """
+    if "korail_version" in payload:
+        value = payload["korail_version"]
+    else:
+        value = load_options().get("korail_version", "")
+    return str(value or "").strip()
+
+
 def _extract_run_context(payload: dict) -> dict:
     login = payload.get("login", {}) if isinstance(payload.get("login"), dict) else {}
     telegram = payload.get("telegram", {}) if isinstance(payload.get("telegram"), dict) else {}
@@ -461,7 +473,7 @@ def _extract_run_context(payload: dict) -> dict:
 
     context = {
         "rail_type": str(payload.get("rail_type", "ktx")).lower(),
-        "korail_version": str(payload.get("korail_version") or "").strip(),
+        "korail_version": _resolve_korail_version(payload),
         "user_id": (login.get("user_id") or payload.get("user_id") or "").strip(),
         "user_pw": (login.get("user_pw") or payload.get("user_pw") or "").strip(),
         "telegram_token": (telegram.get("telegram_token") or payload.get("telegram_token") or "").strip(),
@@ -796,7 +808,7 @@ def search_real_trains(payload: dict) -> list[dict]:
         TrainType as KorailTrainType,
     )
 
-    korail_version = str(payload.get("korail_version") or "").strip()
+    korail_version = _resolve_korail_version(payload)
     client = Korail(auto_login=False, korail_version=korail_version)
     client.login(user_id, user_pw)
     passengers = []
