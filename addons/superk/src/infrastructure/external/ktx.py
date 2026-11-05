@@ -71,7 +71,7 @@ class DynaPathMasterEngine:
     AS_VALUE = "%5B38ff229cb34c7dda8e28220a2d750cce%5D"
     DEVICE_MODEL = "SM-S928N"
     OS_TYPE = "Android"
-    SDK_VERSION = "v1"
+    SDK_VERSION = "v1.0.3"
 
     def __init__(self):
         self.table = "3FE9jgRD4KdCyuawklqGJYmvfMn15P7US8XbxeLQtWT6OicBAopINs2Vh0HZrz"
@@ -168,7 +168,7 @@ class DynaPathMasterEngine:
             f"su=false&dbg=false&emu=false&hk=false&it={self.app_start_ts}&"
             f"ts={ts}&rt=0&os=13&dm={self.DEVICE_MODEL}&st={self.OS_TYPE}&sv={self.SDK_VERSION}"
         )
-        dyn_key = f"v1+{rand}+{ts}"
+        dyn_key = f"{self.SDK_VERSION}+{rand}+{ts}"
         key_enc = self.encode_normal_be(dyn_key, self.table, self.i8, self.i9, self.i10)
         big_key = self.make_key(dyn_key)
         custom_table = self.make_encode_table(big_key, self.i9, self.table)
@@ -773,7 +773,7 @@ class Korail:
         sid = None
         if any(path in url for path in DYNAPATH_PATHS):
             ts = int(time.time() * 1000)
-            rand = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            rand = "".join(random.choices(string.ascii_letters + string.digits, k=4))
             headers["x-dynapath-m-token"] = self._engine.generate_token(
                 self._device_id, ts, rand
             )
