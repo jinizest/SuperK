@@ -173,7 +173,7 @@ class InternalServer:
     def _try_reserve_ktx(self, payload: dict) -> None:
         from infrastructure.external.ktx import Korail, ReserveOption, TrainType as KorailTrainType
 
-        client = Korail(auto_login=False)
+        client = Korail(auto_login=False, korail_version=str(payload.get("korail_version") or "").strip())
         client.login(payload["user_id"], payload["user_pw"])
         trains = client.search_train(
             dep=payload["departure"],
@@ -797,10 +797,7 @@ def search_real_trains(payload: dict) -> list[dict]:
     )
 
     korail_version = str(payload.get("korail_version") or "").strip()
-    if korail_version:
-        os.environ["KORAIL_VERSION"] = korail_version
-
-    client = Korail(auto_login=False)
+    client = Korail(auto_login=False, korail_version=korail_version)
     client.login(user_id, user_pw)
     passengers = []
     if adult > 0:

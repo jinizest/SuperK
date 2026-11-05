@@ -735,14 +735,19 @@ class NetFunnelHelper:
 class Korail:
     """Main Korail API interface"""
 
-    def __init__(self, korail_id=None, korail_pw=None, auto_login=True, verbose=False):
+    def __init__(self, korail_id=None, korail_pw=None, auto_login=True, verbose=False, korail_version=None):
         if HAS_CURL_CFFI:
             self._session = curl_cffi.Session(impersonate="chrome131_android")
         else:
             self._session = requests.session()
         self._session.headers.update(DEFAULT_HEADERS)
         self._device = "AD"
-        self._version = KORAIL_VERSION_CANDIDATES[0]
+        self._requested_version = (
+            os.environ.get("KORAIL_VERSION", "") if korail_version is None else korail_version
+        ).strip()
+        if self._requested_version and not re.fullmatch(r"[0-9]{9}", self._requested_version):
+            raise ValueError("korail_version은 9자리 숫자 또는 빈 값이어야 합니다.")
+        self._version = self._requested_version or KORAIL_VERSION_CANDIDATES[0]
         self._sid_key = b"2485dd54d9deaa36"
         self._device_id = os.environ.get("KORAIL_DEVICE_ID", "558a4f02041657ea")
         self._engine = DynaPathMasterEngine()
@@ -828,7 +833,11 @@ class Korail:
 
         last_error = ("로그인에 실패했습니다.", None)
 
-        version_candidates = _merge_discovered_candidates()
+        version_candidates = (
+            (self._requested_version,)
+            if self._requested_version
+            else _merge_discovered_candidates()
+        )
         for version in version_candidates:
             for device in KORAIL_DEVICE_CANDIDATES:
                 for user_agent in USER_AGENT_CANDIDATES:
@@ -851,6 +860,7 @@ class Korail:
 
                     if j["strResult"] == "SUCC" and j.get("strMbCrdNo"):
                         self._version = version
+                        logging.info("Korail login app version=%s", version)
                         _prioritize_korail_version(version)
                         self._key = j.get("Key", self._key)
                         self.membership_number = j["strMbCrdNo"]
