@@ -40,3 +40,18 @@
 - Add-on Web UI 버튼은 `config.yaml`의 `webui`/`ports` 정의를 기준으로 열립니다(현재 `5555`).
 - `port` 옵션을 기본값과 다르게 변경하면 Web UI 버튼 주소와 실제 Flask 포트가 달라져 빈 화면/차단 화면이 보일 수 있습니다.
 - 포트를 바꿀 경우에는 수동으로 `http://<HA_IP>:<매핑한 외부포트>`로 접속하거나, add-on의 `webui`/`ports` 정의도 함께 맞춰주세요.
+
+### Korail device identity (0.2.20)
+
+SuperK now creates an installation-specific 16-character device ID and keeps it
+in `/data/korail-device.json`. Searches, reservations, and restarts reuse that
+file; retain it in backups. The previous shared default ID is no longer used.
+The existing `KORAIL_DEVICE_ID` environment override remains supported.
+An unreadable or damaged identity file causes an error instead of silently
+changing the device identity on every request.
+
+This change addresses the shared-ID failure reported in
+[korail2 issue #60](https://github.com/carpedm20/korail2/issues/60#issuecomment-5964325934).
+Offline tests cover persistence, concurrent initialization, and explicit overrides.
+They do not establish that Korail will accept a request from a given installation;
+HTTP 403 / DynaPath errors can still have other causes.

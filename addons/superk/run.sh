@@ -1,6 +1,8 @@
 #!/usr/bin/with-contenv bashio
 set -euo pipefail
 
+export KORAIL_DEVICE_FILE="/data/korail-device.json"
+
 export SUPERK_LOG_LEVEL="$(bashio::config 'log_level')"
 export SUPERK_HOST="$(bashio::config 'host')"
 export SUPERK_PORT="$(bashio::config 'port')"

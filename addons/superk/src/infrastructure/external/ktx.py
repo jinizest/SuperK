@@ -7,6 +7,7 @@ korail2.korail2
 """
 
 import base64
+from .device_identity import load_device_id
 import logging
 import os
 import random
@@ -749,7 +750,7 @@ class Korail:
             raise ValueError("korail_version은 9자리 숫자 또는 빈 값이어야 합니다.")
         self._version = self._requested_version or KORAIL_VERSION_CANDIDATES[0]
         self._sid_key = b"2485dd54d9deaa36"
-        self._device_id = os.environ.get("KORAIL_DEVICE_ID", "558a4f02041657ea")
+        self._device_id = load_device_id()
         self._engine = DynaPathMasterEngine()
         self._key = "korail1234567890"
         self._idx = None
