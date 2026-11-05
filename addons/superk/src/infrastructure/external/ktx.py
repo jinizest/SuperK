@@ -955,6 +955,13 @@ class Korail:
             "srtCheckYn": "N",  # SRT 함께 보기
             "rtYn": "N",  # 왕복
             "adjStnScdlOfrFlg": "N",  # 인접역 보기
+            # Korail's current ScheduleView request also sends the query
+            # cursor fields, even for the first page.
+            "qryDvCd": "1",
+            "qryStNo": "0",
+            "qryStTrnNo": "00000",
+            "qryStTrnNo2": "",
+            "pgPrCnt": "10",
             "mbCrdNo": self.membership_number,
         }
 
@@ -963,9 +970,16 @@ class Korail:
         j = json.loads(r.text)
 
         if self._result_check(j):
-            trains = [
-                Train(info) for info in j.get("trn_infos", {}).get("trn_info", [])
-            ]
+            train_infos = j.get("trn_infos", [])
+            if isinstance(train_infos, dict):
+                train_infos = train_infos.get("trn_info", [])
+            # Korail responses have appeared as either a nested object or a
+            # direct array; a single result can also be a single object.
+            if isinstance(train_infos, dict):
+                train_infos = [train_infos]
+            if not isinstance(train_infos, list):
+                train_infos = []
+            trains = [Train(info) for info in train_infos if isinstance(info, dict)]
             filter_fns = [lambda x: x.has_seat()]
 
             if include_no_seats:
