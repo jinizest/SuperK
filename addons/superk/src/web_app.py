@@ -1010,11 +1010,13 @@ def api_search_trains():
     except Exception as exc:
         logging.exception("Train search failed")
         message = str(exc)
-        if "MACRO ERROR" in message or "최신 버전" in message:
+        if str(getattr(exc, "code", "")) == "-8204":
             message = (
-                "코레일 서버가 현재 앱 버전을 차단했습니다. "
-                "코드에 등록된 버전 후보는 자동 시도되며, 그래도 실패하면 `korail_version`에 최신값을 입력해주세요. "
-                f"(원본 오류: {exc})"
+                "코레일 열차 조회가 최신 앱 버전 오류(-8204)로 거부되었습니다. "
+                "로그인은 성공했지만 조회 요청은 거부됐습니다. "
+                "이번 요청은 API 버전 261028001과 앱 버전 7.1.0을 사용했습니다. "
+                "korail_version 숫자를 다시 바꾸는 것으로 해결되지 않을 수 있습니다. "
+                f"(코레일 응답: {exc})"
             )
         return jsonify({"trains": [], "error": message}), 400
     logging.info(
