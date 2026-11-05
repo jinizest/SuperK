@@ -898,6 +898,37 @@ class Korail:
             raise KorailError(h_msg_txt, h_msg_cd)
         return True
 
+    def _parse_search_response(self, response):
+        """Keep transport/security errors distinct from an empty timetable."""
+        status = response.status_code
+        dynapath = response.headers.get("DynaPath-Result")
+        try:
+            payload = json.loads(response.text)
+        except (ValueError, TypeError) as exc:
+            raise KorailError(
+                f"열차 조회 응답이 JSON이 아닙니다 (HTTP {status})", "INVALID_RESPONSE"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise KorailError("열차 조회 응답이 객체가 아닙니다", "INVALID_RESPONSE")
+        try:
+            rejected = dynapath is not None and int(dynapath) < 0
+        except (ValueError, TypeError):
+            rejected = False
+        if status >= 400 or payload.get("strResult") not in ("SUCC", "FAIL"):
+            code = payload.get("code", payload.get("h_msg_cd"))
+            message = payload.get("message") or payload.get("h_msg_txt") or "알 수 없는 서버 응답"
+            # Only error metadata: never dump cookies, credentials or tokens.
+            logging.warning(
+                "Train search rejected: HTTP=%s DynaPath-Result=%r code=%r message=%r",
+                status, dynapath, code, message,
+            )
+            kind = "DynaPath 요청 거부" if status == 403 and rejected else "열차 조회 서버 오류"
+            raise KorailError(
+                f"{kind}: {message} (HTTP {status}, DynaPath-Result={dynapath})",
+                code if code is not None else "INVALID_RESPONSE",
+            )
+        return payload
+
     def search_train(
         self,
         dep,
@@ -967,8 +998,7 @@ class Korail:
         }
 
         r = self._auth_post(API_ENDPOINTS["search_schedule"], data=data)
-        self._log(r.text)
-        j = json.loads(r.text)
+        j = self._parse_search_response(r)
 
         if self._result_check(j):
             train_infos = j.get("trn_infos", [])
