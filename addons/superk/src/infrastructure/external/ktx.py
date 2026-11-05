@@ -965,7 +965,7 @@ class Korail:
             "mbCrdNo": self.membership_number,
         }
 
-        r = self._auth_get(API_ENDPOINTS["search_schedule"], params=data)
+        r = self._auth_post(API_ENDPOINTS["search_schedule"], data=data)
         self._log(r.text)
         j = json.loads(r.text)
 
